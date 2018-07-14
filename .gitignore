@@ -1,0 +1,11 @@
+
+main
+test
+sample*
+
+.DS_Store
+*.exe
+*.dll
+*.so
+*.dylib
+
