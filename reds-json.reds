@@ -99,6 +99,7 @@ json: context [
         /local  c
     ][
         c: ctx/json
+        ;- switch 不能用 null，且 R/S 没有 '\0' 对应的值
         if null? c [return PARSE_EXPECT_VALUE]
 
         switch c/value [
