@@ -147,8 +147,8 @@ json: context [
         if ret = PARSE_OK [
             parse-whitespace ctx
             byte: ctx/json
-            if byte <> null [
-                print-line "is not null"
+            if byte/value <> null-byte [
+                print-line "terminated not by null-byte"
                 ret: PARSE_ROOT_NOT_SINGULAR
             ]
         ]
