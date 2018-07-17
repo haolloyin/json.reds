@@ -16,8 +16,12 @@ expect-eq-base: func [
 ][
     test-count: test-count + 1
     test-index: test-index + 1
-    either equality [test-pass: test-pass + 1][
-        printf ["FAILED %d >> expect: %d, actual: %d" test-index expect actual]
+    either equality [
+        test-pass: test-pass + 1
+        ;printf ["---> PASSED %d, expect: %d, actual: %d" test-index expect actual]
+        ;print lf
+    ][
+        printf ["---> FAILED %d, expect: %d, actual: %d" test-index expect actual]
         print lf
         main-ret: 1
     ]
@@ -54,15 +58,45 @@ test-parse-false: func [/local v][
     expect-eq-int JSON_FALSE json/get-type v
 ]
 
+test-parse-expect-value: func [/local v][
+    v: declare json-value!
+    v/type: JSON_FALSE
+    expect-eq-int PARSE_EXPECT_VALUE json/parse v ""
+    expect-eq-int JSON_NULL json/get-type v
+
+    v/type: JSON_FALSE
+    expect-eq-int PARSE_EXPECT_VALUE json/parse v " "
+    expect-eq-int JSON_NULL json/get-type v
+]
+
+test-parse-invalid-value: func [/local v][
+    v: declare json-value!
+    v/type: JSON_FALSE
+    expect-eq-int PARSE_INVALID_VALUE json/parse v "nul"
+    expect-eq-int JSON_NULL json/get-type v
+
+    v/type: JSON_FALSE
+    expect-eq-int PARSE_INVALID_VALUE json/parse v "?"
+    expect-eq-int JSON_NULL json/get-type v
+]
+
+test-parse-root-not-singular: func [/local v][
+    v: declare json-value!
+    v/type: JSON_FALSE
+    expect-eq-int PARSE_ROOT_NOT_SINGULAR json/parse v "null x"
+    expect-eq-int JSON_NULL json/get-type v
+]
+
 test-parse: does [
     test-parse-null
     test-parse-true
     test-parse-false
+    test-parse-expect-value
+    test-parse-invalid-value
+    test-parse-root-not-singular
 ]
 
-main: func [
-    return: [integer!]
-][
+main: func [return: [integer!]][
     test-parse
 
     printf ["%d/%d (%3.2f%%) passed" test-pass test-count

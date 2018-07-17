@@ -29,14 +29,12 @@ json: context [
 
     parse-whitespace: func [
         ctx     [json-conetxt!]
-        /local  c str
+        /local  c s
     ][
         c: ctx/json
-        while [any [
-                c/value = space
-                c/value = tab
-                c/value = cr
-                c/value = lf]][c: c + 1]
+        while [any [c/1 = space c/1 = tab c/1 = cr c/1 = lf]][
+            c: c + 1
+        ]
         ctx/json: c
     ]
 
@@ -59,11 +57,9 @@ json: context [
         expect ctx #"n"
 
         str: as-c-string ctx/json
-        if any [
-            str/1 <> #"u"
-            str/2 <> #"l"
-            str/3 <> #"l"
-        ][return PARSE_INVALID_VALUE]
+        if any [str/1 <> #"u" str/2 <> #"l" str/3 <> #"l" ][
+            return PARSE_INVALID_VALUE
+        ]
 
         ctx/json: ctx/json + 3
         v/type: JSON_NULL
@@ -78,12 +74,10 @@ json: context [
     ][
         expect ctx #"t"
 
-        str: as-c-string ctx/json
-        if any [
-            str/1 <> #"r"
-            str/2 <> #"u"
-            str/3 <> #"e"
-        ][return PARSE_INVALID_VALUE]
+        str: as-c-string ctx/json   ;- 转成 c-string! 方便用 /i 下标语法
+        if any [str/1 <> #"r" str/2 <> #"u" str/3 <> #"e"][
+            return PARSE_INVALID_VALUE
+        ]
 
         ctx/json: ctx/json + 3
         v/type: JSON_TRUE
@@ -99,12 +93,9 @@ json: context [
         expect ctx #"f"
 
         str: as-c-string ctx/json
-        if any [
-            str/1 <> #"a"
-            str/2 <> #"l"
-            str/3 <> #"s"
-            str/4 <> #"e"
-        ][return PARSE_INVALID_VALUE]
+        if any [str/1 <> #"a" str/2 <> #"l" str/3 <> #"s" str/4 <> #"e" ][
+            return PARSE_INVALID_VALUE
+        ]
 
         ctx/json: ctx/json + 4
         v/type: JSON_FALSE
@@ -118,14 +109,20 @@ json: context [
         /local  c
     ][
         c: ctx/json
-        ;- switch 不能用 null，且 R/S 没有 '\0' 对应的值
-        if null? c [return PARSE_EXPECT_VALUE]
+        ;print-line ["char: " c/value]
 
         switch c/value [
             #"n"    [return parse-null ctx v]
             #"t"    [return parse-true ctx v]
             #"f"    [return parse-false ctx v]
-            default [return PARSE_INVALID_VALUE]
+            null-byte [
+                print-line "    null-byte"
+                return PARSE_EXPECT_VALUE
+            ]
+            default [
+                print-line "    default"
+                return PARSE_INVALID_VALUE
+            ]
         ]
     ]
 
@@ -141,14 +138,14 @@ json: context [
         ctx/json: as byte-ptr! json
         v/type: JSON_NULL
 
-        parse-whitespace ctx
+        parse-whitespace ctx        ;- 先清掉前置的空白
 
         ret: parse-value ctx v
         if ret = PARSE_OK [
-            parse-whitespace ctx
+            parse-whitespace ctx    ;- 再清理后续的空白
             byte: ctx/json
             if byte/value <> null-byte [
-                print-line "terminated not by null-byte"
+                print-line "    terminated not by null-byte"
                 ret: PARSE_ROOT_NOT_SINGULAR
             ]
         ]
@@ -164,5 +161,14 @@ json: context [
     ]
 ]
 
+comment {
+    JSON syntax ABNF:
 
+    JSON-text = ws value ws
+        ws = *(%x20 / %x09 / %x0A / %x0D)
+        value = null / false / true 
+        null  = "null"
+        false = "false"
+        true  = "true"
+}
 
