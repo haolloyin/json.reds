@@ -58,33 +58,25 @@ test-parse-false: func [/local v][
     expect-eq-int JSON_FALSE json/get-type v
 ]
 
-test-parse-expect-value: func [/local v][
-    v: declare json-value!
+#define TEST_ERROR(expect str) [
+    v: declare json-value!  ;- 会重复调用，测试期间无所谓
     v/type: JSON_FALSE
-    expect-eq-int PARSE_EXPECT_VALUE json/parse v ""
+    expect-eq-int expect json/parse v str
     expect-eq-int JSON_NULL json/get-type v
+]
 
-    v/type: JSON_FALSE
-    expect-eq-int PARSE_EXPECT_VALUE json/parse v " "
-    expect-eq-int JSON_NULL json/get-type v
+test-parse-expect-value: func [/local v][
+    TEST_ERROR(PARSE_EXPECT_VALUE "")
+    TEST_ERROR(PARSE_EXPECT_VALUE " ")
 ]
 
 test-parse-invalid-value: func [/local v][
-    v: declare json-value!
-    v/type: JSON_FALSE
-    expect-eq-int PARSE_INVALID_VALUE json/parse v "nul"
-    expect-eq-int JSON_NULL json/get-type v
-
-    v/type: JSON_FALSE
-    expect-eq-int PARSE_INVALID_VALUE json/parse v "?"
-    expect-eq-int JSON_NULL json/get-type v
+    TEST_ERROR(PARSE_INVALID_VALUE "nul")
+    TEST_ERROR(PARSE_INVALID_VALUE "?")    
 ]
 
 test-parse-root-not-singular: func [/local v][
-    v: declare json-value!
-    v/type: JSON_FALSE
-    expect-eq-int PARSE_ROOT_NOT_SINGULAR json/parse v "null x"
-    expect-eq-int JSON_NULL json/get-type v
+    TEST_ERROR(PARSE_ROOT_NOT_SINGULAR "null x")
 ]
 
 test-parse: does [
