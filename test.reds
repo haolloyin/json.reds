@@ -8,12 +8,7 @@ test-count: 0
 test-pass:  0
 test-index: 0
 
-expect-eq-base: func [
-    equality    [logic!]
-    expect      [integer!]
-    actual      [integer!]
-    format      [c-string!]
-][
+#define expect-eq-base(equality expect actual format) [
     test-count: test-count + 1
     test-index: test-index + 1
     either equality [
@@ -34,7 +29,17 @@ expect-eq-int: func [
         equality    [logic!]
 ][
     equality: expect = actual
-    expect-eq-base equality expect actual "%d"
+    expect-eq-base(equality expect actual "%d")
+]
+
+expect-eq-float: func [
+    expect  [float!]
+    actual  [float!]
+    /local
+        equality    [logic!]
+][
+    equality: expect = actual
+    expect-eq-base(equality expect actual "%.17g")
 ]
 
 test-parse-null: func [/local v][
@@ -79,13 +84,43 @@ test-parse-root-not-singular: func [/local v][
     TEST_ERROR(PARSE_ROOT_NOT_SINGULAR "null x")
 ]
 
+#define TEST_NUMBER(expect str) [
+    v: declare json-value!  ;- 会重复调用，测试期间无所谓
+    expect-eq-int PARSE_OK json/parse v str
+    ;expect-eq-int JSON_NUMBER json/get-type v
+    ;expect-eq-float expect json/get-number v
+]
+
+test-parse-number: func [/local v][
+    TEST_NUMBER(0.0 "0")
+    TEST_NUMBER(0.0 "0")
+    TEST_NUMBER(0.0 "-0")
+    TEST_NUMBER(3.1416 "3.1416")
+    ;TEST_NUMBER(1.5 "1.5")
+    ;TEST_NUMBER(-1.5 "-1.5")
+    ;TEST_NUMBER(0.0 "-0.0")
+    ;TEST_NUMBER(1.0 "1")
+    ;TEST_NUMBER(-1.0 "-1")
+    ;TEST_NUMBER(1E10 "1E10")
+    ;TEST_NUMBER(1e10 "1e10")
+    ;TEST_NUMBER(1E+10 "1E+10")
+    ;TEST_NUMBER(1E-10 "1E-10")
+    ;TEST_NUMBER(-1E10 "-1E10")
+    ;TEST_NUMBER(-1e10 "-1e10")
+    ;TEST_NUMBER(-1E+10 "-1E+10")
+    ;TEST_NUMBER(-1E-10 "-1E-10")
+    ;TEST_NUMBER(1.234E+10 "1.234E+10")
+    ;TEST_NUMBER(1.234E-10 "1.234E-10")
+]
+
 test-parse: does [
-    test-parse-null
-    test-parse-true
-    test-parse-false
-    test-parse-expect-value
-    test-parse-invalid-value
-    test-parse-root-not-singular
+    ;test-parse-null
+    ;test-parse-true
+    ;test-parse-false
+    ;test-parse-expect-value
+    ;test-parse-invalid-value
+    ;test-parse-root-not-singular
+    test-parse-number
 ]
 
 main: func [return: [integer!]][
