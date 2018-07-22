@@ -103,12 +103,12 @@ json: context [
         PARSE_OK
     ]
 
-    #define ISDIGIT(v) [all [#"0" <= v v <= #"9"]]
-    #define ISDIGIT1TO9(v) [all [#"1" <= v v <= #"9"]]
+    #define ISDIGIT(v)      [all [v >= #"0" v <= #"9"]]
+    #define ISDIGIT1TO9(v)  [all [v >= #"1" v <= #"9"]]
     #define JUMP_TO_NOT_DIGIT [
         until [
             c: c + 1
-            ISDIGIT(c/value)    ;- 跳到下一个非数字的位置
+            not ISDIGIT(c/value)    ;- 不是数字则跳出
         ]
     ]
 
@@ -145,9 +145,9 @@ json: context [
         ;- TODO: 不知道怎么实现数字过大时要用 errno 判断 ERANGE、HUGE_VAL 几个宏的问题
         ;- SEE https://zh.cppreference.com/w/c/string/byte/strtof
         v/num: strtod ctx/json null
-        ;if null? c [return PARSE_INVALID_VALUE]
+        if null? c [return PARSE_INVALID_VALUE]
 
-        ctx/json: c     ;- 跳到成功转型后的下一个字节
+        ctx/json: c    ;- 跳到成功转型后的下一个字节
         v/type: JSON_NUMBER
         PARSE_OK
     ]
@@ -159,7 +159,6 @@ json: context [
         /local  c
     ][
         c: ctx/json
-        ;print-line ["char: " c/value]
 
         switch c/value [
             #"n"    [return parse-null ctx v]
@@ -194,8 +193,9 @@ json: context [
         if ret = PARSE_OK [
             parse-whitespace ctx    ;- 再清理后续的空白
             byte: ctx/json
+
             if byte/value <> null-byte [
-                ;print-line "    terminated not by null-byte"
+                print-line "    terminated not by null-byte"
                 ret: PARSE_ROOT_NOT_SINGULAR
             ]
         ]

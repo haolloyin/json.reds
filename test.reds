@@ -87,30 +87,30 @@ test-parse-root-not-singular: func [/local v][
 #define TEST_NUMBER(expect str) [
     v: declare json-value!  ;- 会重复调用，测试期间无所谓
     expect-eq-int PARSE_OK json/parse v str
-    ;expect-eq-int JSON_NUMBER json/get-type v
-    ;expect-eq-float expect json/get-number v
+    expect-eq-int JSON_NUMBER json/get-type v
+    expect-eq-float expect json/get-number v
 ]
 
 test-parse-number: func [/local v][
     TEST_NUMBER(0.0 "0")
-    TEST_NUMBER(0.0 "0")
     TEST_NUMBER(0.0 "-0")
+    TEST_NUMBER(0.1 "0.1")
     TEST_NUMBER(3.1416 "3.1416")
-    ;TEST_NUMBER(1.5 "1.5")
-    ;TEST_NUMBER(-1.5 "-1.5")
-    ;TEST_NUMBER(0.0 "-0.0")
-    ;TEST_NUMBER(1.0 "1")
-    ;TEST_NUMBER(-1.0 "-1")
-    ;TEST_NUMBER(1E10 "1E10")
-    ;TEST_NUMBER(1e10 "1e10")
-    ;TEST_NUMBER(1E+10 "1E+10")
-    ;TEST_NUMBER(1E-10 "1E-10")
-    ;TEST_NUMBER(-1E10 "-1E10")
-    ;TEST_NUMBER(-1e10 "-1e10")
-    ;TEST_NUMBER(-1E+10 "-1E+10")
-    ;TEST_NUMBER(-1E-10 "-1E-10")
-    ;TEST_NUMBER(1.234E+10 "1.234E+10")
-    ;TEST_NUMBER(1.234E-10 "1.234E-10")
+    TEST_NUMBER(1.5 "1.5")
+    TEST_NUMBER(-1.5 "-1.5")
+    TEST_NUMBER(0.0 "-0.0")
+    TEST_NUMBER(1.0 "1")
+    TEST_NUMBER(-1.0 "-1")
+    TEST_NUMBER(1E10 "1E10")
+    TEST_NUMBER(1e10 "1e10")
+    TEST_NUMBER(1E+10 "1E+10")
+    TEST_NUMBER(1E-10 "1E-10")
+    TEST_NUMBER(-1E10 "-1E10")
+    TEST_NUMBER(-1e10 "-1e10")
+    TEST_NUMBER(-1E+10 "-1E+10")
+    TEST_NUMBER(-1E-10 "-1E-10")
+    TEST_NUMBER(1.234E+10 "1.234E+10")
+    TEST_NUMBER(1.234E-10 "1.234E-10")
 ]
 
 test-parse: does [
