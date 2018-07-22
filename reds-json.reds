@@ -15,6 +15,7 @@ Red/System []
     PARSE_EXPECT_VALUE
     PARSE_INVALID_VALUE
     PARSE_ROOT_NOT_SINGULAR
+    PARSE_NUMBER_TOO_BIG;
 ]
 
 json-value!: alias struct! [
@@ -196,6 +197,7 @@ json: context [
 
             if byte/value <> null-byte [
                 print-line "    terminated not by null-byte"
+                v/type: JSON_NULL
                 ret: PARSE_ROOT_NOT_SINGULAR
             ]
         ]

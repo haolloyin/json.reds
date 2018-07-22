@@ -78,10 +78,21 @@ test-parse-expect-value: func [/local v][
 test-parse-invalid-value: func [/local v][
     TEST_ERROR(PARSE_INVALID_VALUE "nul")
     TEST_ERROR(PARSE_INVALID_VALUE "?")    
+
+    ;/* invalid number */
+    TEST_ERROR(PARSE_INVALID_VALUE "+0");
+    TEST_ERROR(PARSE_INVALID_VALUE "+1");
+    TEST_ERROR(PARSE_INVALID_VALUE ".123"); /* at least one digit before '.' */
+    TEST_ERROR(PARSE_INVALID_VALUE "1.");   /* at least one digit after '.' */
 ]
 
 test-parse-root-not-singular: func [/local v][
     TEST_ERROR(PARSE_ROOT_NOT_SINGULAR "null x")
+
+    ;/* invalid number */
+    TEST_ERROR(PARSE_ROOT_NOT_SINGULAR "0123"); /* after zero should be '.' or nothing */
+    TEST_ERROR(PARSE_ROOT_NOT_SINGULAR "0x0");
+    TEST_ERROR(PARSE_ROOT_NOT_SINGULAR "0x123");
 ]
 
 #define TEST_NUMBER(expect str) [
@@ -111,16 +122,33 @@ test-parse-number: func [/local v][
     TEST_NUMBER(-1E-10 "-1E-10")
     TEST_NUMBER(1.234E+10 "1.234E+10")
     TEST_NUMBER(1.234E-10 "1.234E-10")
+
+    TEST_NUMBER(0.0 "1e-10000") ; must underflow
+    TEST_NUMBER(1.0000000000000002 "1.0000000000000002"); /* the smallest number > 1 */
+    TEST_NUMBER( 4.9406564584124654e-324 "4.9406564584124654e-324"); /* minimum denormal */
+    TEST_NUMBER(-4.9406564584124654e-324 "-4.9406564584124654e-324");
+    TEST_NUMBER( 2.2250738585072009e-308 "2.2250738585072009e-308");  /* Max subnormal double */
+    TEST_NUMBER(-2.2250738585072009e-308 "-2.2250738585072009e-308");
+    TEST_NUMBER( 2.2250738585072014e-308 "2.2250738585072014e-308");  /* Min normal positive double */
+    TEST_NUMBER(-2.2250738585072014e-308 "-2.2250738585072014e-308");
+    TEST_NUMBER( 1.7976931348623157e+308 "1.7976931348623157e+308");  /* Max double */
+    TEST_NUMBER(-1.7976931348623157e+308 "-1.7976931348623157e+308");
+]
+
+test-parse-number-too-big: func [/local v][
+    TEST_ERROR(PARSE_NUMBER_TOO_BIG "1e309")
+    TEST_ERROR(PARSE_NUMBER_TOO_BIG "-1e309")
 ]
 
 test-parse: does [
-    ;test-parse-null
-    ;test-parse-true
-    ;test-parse-false
-    ;test-parse-expect-value
-    ;test-parse-invalid-value
-    ;test-parse-root-not-singular
+    test-parse-null
+    test-parse-true
+    test-parse-false
+    test-parse-expect-value
+    test-parse-invalid-value
+    test-parse-root-not-singular
     test-parse-number
+    ;test-parse-number-too-big      ;- no working
 ]
 
 main: func [return: [integer!]][
