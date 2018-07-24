@@ -8,7 +8,7 @@ test-count: 0
 test-pass:  0
 test-index: 0
 
-#define expect-eq-base(equality expect actual format) [
+#define EXPECT_EQ_BASE(equality expect actual format) [
     test-count: test-count + 1
     test-index: test-index + 1
     either equality [
@@ -30,7 +30,7 @@ expect-eq-int: func [
     /local equality s
 ][
     equality: expect = actual
-    expect-eq-base(equality expect actual "%d")
+    EXPECT_EQ_BASE(equality expect actual "%d")
 ]
 
 expect-eq-float: func [
@@ -39,7 +39,7 @@ expect-eq-float: func [
     /local equality s
 ][
     equality: expect = actual
-    expect-eq-base(equality expect actual "%.17g")
+    EXPECT_EQ_BASE(equality expect actual "%.17g")
 ]
 
 expect-eq-string: func [
@@ -52,7 +52,23 @@ expect-eq-string: func [
                         as byte-ptr! expect
                         as byte-ptr! actual
                         length? expect
-    expect-eq-base(equality expect actual "%s")
+    EXPECT_EQ_BASE(equality expect actual "%s")
+]
+
+expect-true: func [
+    actual  [logic!]
+    /local  equality s
+][
+    equality: actual = true
+    EXPECT_EQ_BASE(equality "true" "false" "%s")
+]
+
+expect-false: func [
+    actual  [logic!]
+    /local  equality s
+][
+    equality: actual = false
+    EXPECT_EQ_BASE(equality "false" "true" "%s")
 ]
 
 test-parse-null: func [/local v][
@@ -153,11 +169,9 @@ test-parse-number-too-big: func [/local v][
     TEST_ERROR(PARSE_NUMBER_TOO_BIG "-1e309")
 ]
 
-test-access-string: func [
-    /local v
-][
+test-access-string: func [/local v][
     v: declare json-value!
-    INIT_VALUE(v)
+    json/init-value v
 
     json/set-string v "" 0
     expect-eq-string "" json/get-string v json/get-string-length v
@@ -166,6 +180,45 @@ test-access-string: func [
     expect-eq-string "hello" json/get-string v json/get-string-length v
 
     json/free-value v
+]
+
+test-access-boolean: func [/local v][
+    v: declare json-value!
+    json/init-value v
+
+    json/set-string v "a" 1
+    json/set-boolean v true
+    expect-true json/get-boolean v
+    json/set-boolean v false
+    expect-false json/get-boolean v
+
+    json/free-value v
+]
+
+test-access-number: func [/local v][
+    v: declare json-value!
+    json/init-value v
+
+    json/set-string v "a" 1
+    json/set-number v 3.14
+    expect-eq-float 3.14 json/get-number v
+
+    json/free-value v
+]
+
+#define TEST_STRING(expect str) [
+    v: declare json-value!
+    json/init-value v
+
+    expect-eq-int PARSE_OK json/parse v str
+    ;expect-eq-int JSON_STRING json/get-type v
+    ;expect-eq-string expect json/get-string v json/get-string-length v
+
+    json/free-value v
+]
+
+test-parse-string: func [/local v][
+    TEST_STRING("" "^"^"")
 ]
 
 test-parse: does [
@@ -177,7 +230,12 @@ test-parse: does [
     ;test-parse-root-not-singular
     ;test-parse-number
     ;test-parse-number-too-big      ;- no working
-    test-access-string
+
+    ;test-access-string
+    ;test-access-boolean
+    ;test-access-number
+
+    test-parse-string
 ]
 
 main: func [return: [integer!]][

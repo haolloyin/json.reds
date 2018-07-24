@@ -15,7 +15,9 @@ Red/System []
     PARSE_EXPECT_VALUE
     PARSE_INVALID_VALUE
     PARSE_ROOT_NOT_SINGULAR
-    PARSE_NUMBER_TOO_BIG;
+    PARSE_NUMBER_TOO_BIG
+    PARSE_MISS_QUOTATION_MARK
+    PARSE_INVALID_STRING_ESCAPE
 ]
 
 json-value!: alias struct! [
@@ -28,6 +30,9 @@ json-value!: alias struct! [
 
 json-conetxt!: alias struct! [
     json    [c-string!]     ;- JSON 字符串
+    stack   [byte-ptr!]     ;- 动态数组，按字节存储
+    size    [integer!]      ;- 当前栈大小，按 byte 计
+    top     [integer!]      ;- 可 push/pop 任意大小
 ]
 
 
@@ -156,6 +161,63 @@ json: context [
         PARSE_OK
     ]
 
+    #define PUTC(ctx ch) [
+        top: context-push ctx 1
+        top/value: ch
+    ]
+
+    parse-string: func [
+        ctx     [json-conetxt!]
+        v       [json-value!]
+        return: [integer!]
+        /local  head len p ch top
+    ][
+        head: ctx/top
+
+        expect ctx #"^""    ;- 字符串必定以双引号开头
+
+        p: ctx/json
+        forever [
+            ch: p/1
+            switch ch [
+                #"^"" [     ;- 字符串结束符
+                    len: ctx/top - head
+                    set-string v (context-pop ctx len) len
+                    ctx/json: p
+                    return PARSE_OK
+                ]
+                #"\" [
+                    switch ch [
+                        #"^"" [PUTC(ctx #"^"")]
+                        #"\" [PUTC(ctx #"\")]
+                        #"/" [PUTC(ctx #"^"")]
+                        ;#"b" [PUTC(ctx #"\b")]
+                        ;#"f" [PUTC(ctx #"\f")]
+                        #"n" [PUTC(ctx #"^M")]
+                        #"r" [PUTC(ctx #"^/")]
+                        #"t" [PUTC(ctx #"^-")]
+                        default [
+                            ctx/top: head
+                            return PARSE_INVALID_STRING_ESCAPE
+                        ]
+                    ]
+                    p: p + 1
+                ]
+                null-byte [
+                    ctx/top: head
+                    return PARSE_MISS_QUOTATION_MARK    ;- 没有用 " 结尾
+                ]
+                default [
+                    ;- TODO
+                    PUTC(ctx ch)
+                ]
+            ]
+
+            p: p + 1
+        ]
+        0
+    ]
+
     parse-value: func [
         ctx     [json-conetxt!]
         v       [json-value!]
@@ -168,6 +230,7 @@ json: context [
             #"n"    [return parse-null ctx v]
             #"t"    [return parse-true ctx v]
             #"f"    [return parse-false ctx v]
+            #"^""   [return parse-string ctx v]
             null-byte [
                 ;print-line "    null-byte"
                 return PARSE_EXPECT_VALUE
@@ -188,11 +251,14 @@ json: context [
         ctx: declare json-conetxt!  ;- 用于装载解析过程中的内容
         assert ctx <> null
 
-        ctx/json: json
-        v/type: JSON_NULL
+        ctx/json:   json
+        ctx/stack:  null
+        ctx/size:   0
+        ctx/top:    0
+        v/type:     JSON_NULL
 
+        ;- 开始解析
         parse-whitespace ctx        ;- 先清掉前置的空白
-
         ret: parse-value ctx v
         if ret = PARSE_OK [
             parse-whitespace ctx    ;- 再清理后续的空白
@@ -204,9 +270,61 @@ json: context [
                 ret: PARSE_ROOT_NOT_SINGULAR
             ]
         ]
+
+        ;- 清理空间
+        assert ctx/top = 0
+        free ctx/stack
+
         ret
     ]
 
+    ;------------- stack functions ----------------
+    #define PARSE_STACK_INIT_SIZE 256   ;- 初始的栈大小
+    #import [
+        LIBC-file cdecl [
+            realloc:    "realloc" [
+                ptr     [byte-ptr!]
+                size    [integer!]
+                return: [byte-ptr!]
+            ]
+        ]
+    ]
+
+    context-push: func [
+        ctx     [json-conetxt!]
+        size    [integer!]
+        return: [byte-ptr!]
+        /local  ret
+    ][
+        assert size > 0
+
+        ;- 栈空间不足
+        if ctx/top + size >= ctx/size [
+            ;- 首次初始化
+            if ctx/size = 0 [
+                ctx/size: PARSE_STACK_INIT_SIZE
+            ]
+
+            while [ctx/top + size >= ctx/size][
+                ctx/size: ctx/size + (ctx/size >> 1)    ;- 每次加 2倍
+            ]
+            ctx/stack: realloc ctx/stack ctx/size       ;- 重新分配内存
+        ]
+
+        ret: ctx/stack + ctx/top    ;- 返回数据起始的指针
+        ctx/top: ctx/top + size     ;- 指向新的栈顶
+        ret
+    ]
+
+    context-pop: func [
+        ctx     [json-conetxt!]
+        size    [integer!]
+        return: [c-string!]
+    ][
+        assert ctx/top > size
+        ctx/top: ctx/top - size
+        as-c-string ctx/stack + ctx/top         ;- 返回缩减后的栈顶指针
+    ]
 
     ;------------ Accessing functions -------------
 
@@ -218,53 +336,39 @@ json: context [
         v/type
     ]
 
-    get-number: func [
-        v       [json-value!]
-        return: [float!]
-    ][
+    get-number: func [v [json-value!] return: [float!]][
         assert all [
             v <> null
-            v/type = JSON_NUMBER
-        ]
+            v/type = JSON_NUMBER]
+
         v/num
     ]
 
     set-number: func [v [json-value!] num [float!]][
-        assert all [
-            v <> null
-            v/type = JSON_NUMBER
-        ]
+        free-value v
         v/num: num
+        v/type: JSON_NUMBER
     ]
 
     get-boolean: func [v [json-value!] return: [logic!]][
         assert all [
             v <> null
-            any [v/type = JSON_FALSE v/type = JSON_TRUE] 
-        ]
-        switch v/type [
-           JSON_FALSE   [return false]
-           JSON_TRUE    [return true]
-        ]
+            any [v/type = JSON_FALSE v/type = JSON_TRUE]]
+
+        v/type = JSON_TRUE
     ]
 
     set-boolean: func [v [json-value!] b [logic!]][
-        assert all [
-            v <> null
-            any [v/type = JSON_FALSE v/type = JSON_TRUE] 
-        ]
-        ;switch b [
-        ;    true    [v/type: JSON_TRUE]
-        ;    false   [v/type: JSON_FALSE]
-        ;]
+        free-value v
+        v/type: either b [JSON_TRUE][JSON_FALSE]
     ]
 
     get-string: func [v [json-value!] return: [c-string!]][
         assert all [
             v <> null
             v/type = JSON_STRING
-            v/str <> null
-        ]
+            v/str <> null]
+
         v/str
     ]
 
@@ -272,25 +376,26 @@ json: context [
         assert all [
             v <> null
             v/type = JSON_STRING
-            v/str <> null
-        ]
+            v/str <> null]
+
         v/len
     ]
 
-    #define INIT_VALUE(v)   [v/type: JSON_NULL]
-    #define SET_NULL(v)     [free-value v]
+    init-value: func [v [json-value!]][
+        assert v <> null
+        v/type: JSON_NULL
+    ]
 
     free-value: func [v [json-value!]][
         assert v <> null
         if v/type = JSON_STRING [free as byte-ptr! v/str]
-        INIT_VALUE(v)
+        v/type: JSON_NULL 
     ]
 
     set-string: func [
         v       [json-value!]
         str     [c-string!]
         len     [integer!]
-        /local  idx
     ][
         assert all [
             v <> null
