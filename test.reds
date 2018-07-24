@@ -16,7 +16,9 @@ test-index: 0
         ;printf ["---> PASSED %d, expect: %d, actual: %d" test-index expect actual]
         ;print lf
     ][
-        printf ["---> FAILED %d, expect: %d, actual: %d" test-index expect actual]
+        s: as-c-string allocate 50  ;- 预分配 format 串的长度
+        sprintf [s "---> FAILED %d, expect: %s, actual: %s" test-index format format]
+        printf [s expect actual]
         print lf
         main-ret: 1
     ]
@@ -25,8 +27,7 @@ test-index: 0
 expect-eq-int: func [
     expect  [integer!]
     actual  [integer!]
-    /local
-        equality    [logic!]
+    /local equality s
 ][
     equality: expect = actual
     expect-eq-base(equality expect actual "%d")
@@ -35,11 +36,23 @@ expect-eq-int: func [
 expect-eq-float: func [
     expect  [float!]
     actual  [float!]
-    /local
-        equality    [logic!]
+    /local equality s
 ][
     equality: expect = actual
     expect-eq-base(equality expect actual "%.17g")
+]
+
+expect-eq-string: func [
+    expect  [c-string!]
+    actual  [c-string!]
+    len     [integer!]
+    /local equality s
+][
+    equality: zero? compare-memory 
+                        as byte-ptr! expect
+                        as byte-ptr! actual
+                        length? expect
+    expect-eq-base(equality expect actual "%s")
 ]
 
 test-parse-null: func [/local v][
@@ -140,15 +153,31 @@ test-parse-number-too-big: func [/local v][
     TEST_ERROR(PARSE_NUMBER_TOO_BIG "-1e309")
 ]
 
+test-access-string: func [
+    /local v
+][
+    v: declare json-value!
+    INIT_VALUE(v)
+
+    json/set-string v "" 0
+    expect-eq-string "" json/get-string v json/get-string-length v
+
+    json/set-string v "hello" 5
+    expect-eq-string "hello" json/get-string v json/get-string-length v
+
+    json/free-value v
+]
+
 test-parse: does [
-    test-parse-null
-    test-parse-true
-    test-parse-false
-    test-parse-expect-value
-    test-parse-invalid-value
-    test-parse-root-not-singular
-    test-parse-number
+    ;test-parse-null
+    ;test-parse-true
+    ;test-parse-false
+    ;test-parse-expect-value
+    ;test-parse-invalid-value
+    ;test-parse-root-not-singular
+    ;test-parse-number
     ;test-parse-number-too-big      ;- no working
+    test-access-string
 ]
 
 main: func [return: [integer!]][

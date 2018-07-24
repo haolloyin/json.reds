@@ -20,7 +20,10 @@ Red/System []
 
 json-value!: alias struct! [
     type    [json-type!]    ;- 类型
+    ;- Note: Red/System 不支持 union，所以只能冗余 num 和 str 两种情况
     num     [float!]        ;- 数值
+    str     [c-string!]     ;- 字符串
+    len     [integer!]      ;- 字符串长度
 ]
 
 json-conetxt!: alias struct! [
@@ -204,6 +207,9 @@ json: context [
         ret
     ]
 
+
+    ;------------ Accessing functions -------------
+
     get-type: func [
         v       [json-value!]
         return: [json-type!]
@@ -222,6 +228,85 @@ json: context [
         ]
         v/num
     ]
+
+    set-number: func [v [json-value!] num [float!]][
+        assert all [
+            v <> null
+            v/type = JSON_NUMBER
+        ]
+        v/num: num
+    ]
+
+    get-boolean: func [v [json-value!] return: [logic!]][
+        assert all [
+            v <> null
+            any [v/type = JSON_FALSE v/type = JSON_TRUE] 
+        ]
+        switch v/type [
+           JSON_FALSE   [return false]
+           JSON_TRUE    [return true]
+        ]
+    ]
+
+    set-boolean: func [v [json-value!] b [logic!]][
+        assert all [
+            v <> null
+            any [v/type = JSON_FALSE v/type = JSON_TRUE] 
+        ]
+        ;switch b [
+        ;    true    [v/type: JSON_TRUE]
+        ;    false   [v/type: JSON_FALSE]
+        ;]
+    ]
+
+    get-string: func [v [json-value!] return: [c-string!]][
+        assert all [
+            v <> null
+            v/type = JSON_STRING
+            v/str <> null
+        ]
+        v/str
+    ]
+
+    get-string-length: func [v [json-value!] return: [integer!]][
+        assert all [
+            v <> null
+            v/type = JSON_STRING
+            v/str <> null
+        ]
+        v/len
+    ]
+
+    #define INIT_VALUE(v)   [v/type: JSON_NULL]
+    #define SET_NULL(v)     [free-value v]
+
+    free-value: func [v [json-value!]][
+        assert v <> null
+        if v/type = JSON_STRING [free as byte-ptr! v/str]
+        INIT_VALUE(v)
+    ]
+
+    set-string: func [
+        v       [json-value!]
+        str     [c-string!]
+        len     [integer!]
+        /local  idx
+    ][
+        assert all [
+            v <> null
+            any [str <> null len = 0]]    ;- 非空指针，或空字符串
+
+        free-value v        ;- 确保原本的 v 可能是已经分配过的 string
+
+        v/str: as-c-string allocate size? str
+        copy-memory
+            as byte-ptr! v/str 
+            as byte-ptr! str 
+            size? str
+        v/len: len
+        v/type: JSON_STRING
+    ]
+
 ]
 
 comment {
