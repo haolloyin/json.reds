@@ -27,14 +27,14 @@ json-value!: alias struct! [
 ]
 
 json-conetxt!: alias struct! [
-    json    [byte-ptr!]     ;- JSON 字符串
+    json    [c-string!]     ;- JSON 字符串
 ]
 
 
 json: context [
     parse-whitespace: func [
         ctx     [json-conetxt!]
-        /local  c s
+        /local  c
     ][
         c: ctx/json
         while [any [c/1 = space c/1 = tab c/1 = cr c/1 = lf]][
@@ -49,7 +49,7 @@ json: context [
         /local  c
     ][
         c: ctx/json
-        assert c/value = char
+        assert c/1 = char
         ctx/json: ctx/json + 1
     ]
 
@@ -61,7 +61,7 @@ json: context [
     ][
         expect ctx #"n"
 
-        str: as-c-string ctx/json
+        str: ctx/json
         if any [str/1 <> #"u" str/2 <> #"l" str/3 <> #"l" ][
             return PARSE_INVALID_VALUE
         ]
@@ -79,7 +79,7 @@ json: context [
     ][
         expect ctx #"t"
 
-        str: as-c-string ctx/json   ;- 转成 c-string! 方便用 /i 下标语法
+        str: ctx/json
         if any [str/1 <> #"r" str/2 <> #"u" str/3 <> #"e"][
             return PARSE_INVALID_VALUE
         ]
@@ -97,7 +97,7 @@ json: context [
     ][
         expect ctx #"f"
 
-        str: as-c-string ctx/json
+        str: ctx/json
         if any [str/1 <> #"a" str/2 <> #"l" str/3 <> #"s" str/4 <> #"e" ][
             return PARSE_INVALID_VALUE
         ]
@@ -112,7 +112,7 @@ json: context [
     #define JUMP_TO_NOT_DIGIT [
         until [
             c: c + 1
-            not ISDIGIT(c/value)    ;- 不是数字则跳出
+            not ISDIGIT(c/1)    ;- 不是数字则跳出
         ]
     ]
 
@@ -125,30 +125,30 @@ json: context [
         c: ctx/json
 
         ;- 校验格式
-        if c/value = #"-" [c: c + 1]
+        if c/1 = #"-" [c: c + 1]
 
-        either c/value = #"0" [c: c + 1][
+        either c/1 = #"0" [c: c + 1][
             ;- 不是 0 开头，接下来必须是 1~9，否则报错
-            if not ISDIGIT1TO9(c/value) [return PARSE_INVALID_VALUE]
+            if not ISDIGIT1TO9(c/1) [return PARSE_INVALID_VALUE]
             JUMP_TO_NOT_DIGIT
         ]
 
-        if c/value = #"." [
+        if c/1 = #"." [
             c: c + 1
-            if not ISDIGIT(c/value) [return PARSE_INVALID_VALUE]
+            if not ISDIGIT(c/1) [return PARSE_INVALID_VALUE]
             JUMP_TO_NOT_DIGIT
         ]
 
-        if any [c/value = #"e" c/value = #"E"][
+        if any [c/1 = #"e" c/1 = #"E"][
             c: c + 1
-            if any [c/value = #"+" c/value = #"-"][c: c + 1]
-            if not ISDIGIT(c/value) [return PARSE_INVALID_VALUE]
+            if any [c/1 = #"+" c/1 = #"-"][c: c + 1]
+            if not ISDIGIT(c/1) [return PARSE_INVALID_VALUE]
             JUMP_TO_NOT_DIGIT
         ]
 
         ;- TODO: 不知道怎么实现数字过大时要用 errno 判断 ERANGE、HUGE_VAL 几个宏的问题
         ;- SEE https://zh.cppreference.com/w/c/string/byte/strtof
-        v/num: strtod ctx/json null
+        v/num: strtod as byte-ptr! ctx/json null
         if null? c [return PARSE_INVALID_VALUE]
 
         ctx/json: c    ;- 跳到成功转型后的下一个字节
@@ -164,7 +164,7 @@ json: context [
     ][
         c: ctx/json
 
-        switch c/value [
+        switch c/1 [
             #"n"    [return parse-null ctx v]
             #"t"    [return parse-true ctx v]
             #"f"    [return parse-false ctx v]
@@ -185,10 +185,10 @@ json: context [
         return: [json-parse-result!]
         /local  ctx ret byte
     ][
-        ctx: declare json-conetxt!
+        ctx: declare json-conetxt!  ;- 用于装载解析过程中的内容
         assert ctx <> null
 
-        ctx/json: as byte-ptr! json
+        ctx/json: json
         v/type: JSON_NULL
 
         parse-whitespace ctx        ;- 先清掉前置的空白
@@ -198,7 +198,7 @@ json: context [
             parse-whitespace ctx    ;- 再清理后续的空白
             byte: ctx/json
 
-            if byte/value <> null-byte [
+            if byte/1 <> null-byte [
                 print-line "    terminated not by null-byte"
                 v/type: JSON_NULL
                 ret: PARSE_ROOT_NOT_SINGULAR
@@ -296,13 +296,10 @@ json: context [
             v <> null
             any [str <> null len = 0]]    ;- 非空指针，或空字符串
 
-        free-value v        ;- 确保原本的 v 可能是已经分配过的 string
+        free-value v    ;- 确保原本的 v 可能是已经分配过的 string 被释放掉
 
-        v/str: as-c-string allocate size? str
-        copy-memory
-            as byte-ptr! v/str 
-            as byte-ptr! str 
-            size? str
+        v/str: as-c-string allocate size? str   ;- 包含末尾的 null 终结符
+        copy-memory as byte-ptr! v/str as byte-ptr! str size? str
         v/len: len
         v/type: JSON_STRING
     ]
