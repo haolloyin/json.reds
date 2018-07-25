@@ -16,7 +16,7 @@ test-index: 0
         ;printf ["---> PASSED %d, expect: %d, actual: %d" test-index expect actual]
         ;print lf
     ][
-        s: as-c-string allocate 50  ;- 预分配 format 串的长度
+        s: as-c-string allocate 270  ;- 预分配 format 串的长度
         sprintf [s "---> FAILED %d, expect: %s, actual: %s" test-index format format]
         printf [s expect actual]
         print lf
@@ -48,10 +48,13 @@ expect-eq-string: func [
     len     [integer!]
     /local equality s
 ][
-    equality: zero? compare-memory 
+    print-line ["eq-string? expect: " expect ", actual: " actual "."]
+    equality: all [
+                len = length? expect        ;- 长度必须相同
+                zero? compare-memory        ;- 再逐个字节来比较
                         as byte-ptr! expect
                         as byte-ptr! actual
-                        length? expect
+                        len]
     EXPECT_EQ_BASE(equality expect actual "%s")
 ]
 
@@ -173,10 +176,10 @@ test-access-string: func [/local v][
     v: declare json-value!
     json/init-value v
 
-    json/set-string v "" 0
+    json/set-string v as byte-ptr! "" 0
     expect-eq-string "" json/get-string v json/get-string-length v
 
-    json/set-string v "hello" 5
+    json/set-string v as byte-ptr! "hello" 5
     expect-eq-string "hello" json/get-string v json/get-string-length v
 
     json/free-value v
@@ -186,7 +189,7 @@ test-access-boolean: func [/local v][
     v: declare json-value!
     json/init-value v
 
-    json/set-string v "a" 1
+    json/set-string v as byte-ptr! "a" 1
     json/set-boolean v true
     expect-true json/get-boolean v
     json/set-boolean v false
@@ -199,7 +202,7 @@ test-access-number: func [/local v][
     v: declare json-value!
     json/init-value v
 
-    json/set-string v "a" 1
+    json/set-string v as byte-ptr! "a" 1
     json/set-number v 3.14
     expect-eq-float 3.14 json/get-number v
 
@@ -211,14 +214,25 @@ test-access-number: func [/local v][
     json/init-value v
 
     expect-eq-int PARSE_OK json/parse v str
-    ;expect-eq-int JSON_STRING json/get-type v
-    ;expect-eq-string expect json/get-string v json/get-string-length v
+    expect-eq-int JSON_STRING json/get-type v
+    expect-eq-string expect json/get-string v json/get-string-length v
 
     json/free-value v
 ]
 
 test-parse-string: func [/local v][
-    TEST_STRING("" "^"^"")
+    ;TEST_STRING("ab123" {"ab123"})
+    ;print-line "-------"
+    ;TEST_STRING("" {""})
+    ;print-line "-------"
+    ;TEST_STRING("hello" {"hello"})
+    ;print-line "-------"
+    ;TEST_STRING("hello red" {"hello red"})
+    print-line "-------"
+    TEST_STRING("^""    {"\""})
+    TEST_STRING("\"     {"\\"})
+    TEST_STRING({\" \\ / \n \r \t}  {"\\\" \\\\ \/ \\n \\r \\t"})
+    print-line "-------"
 ]
 
 test-parse: does [
@@ -231,11 +245,12 @@ test-parse: does [
     ;test-parse-number
     ;test-parse-number-too-big      ;- no working
 
+    test-parse-string
+
     ;test-access-string
     ;test-access-boolean
     ;test-access-number
 
-    test-parse-string
 ]
 
 main: func [return: [integer!]][

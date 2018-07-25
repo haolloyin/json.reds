@@ -172,48 +172,52 @@ json: context [
         return: [integer!]
         /local  head len p ch top
     ][
-        head: ctx/top
+        head: ctx/top       ;- 记录字符串起始点，即开头的 "
 
-        expect ctx #"^""    ;- 字符串必定以双引号开头
+        ;print-line ["begin parse-string: " ctx/json]
+        expect ctx #"^""    ;- 字符串必定以双引号开头，跳到下一个字符
 
         p: ctx/json
         forever [
             ch: p/1
+            p: p + 1        ;- 先指向下一个字符
+            ;print-line ["parse-string ch: " ch]
             switch ch [
                 #"^"" [     ;- 字符串结束符
                     len: ctx/top - head
+                    ;print-line ["parse-string finish with len: " len]
                     set-string v (context-pop ctx len) len
                     ctx/json: p
                     return PARSE_OK
                 ]
                 #"\" [
+                    ch: p/1
+                    p: p + 1
                     switch ch [
-                        #"^"" [PUTC(ctx #"^"")]
-                        #"\" [PUTC(ctx #"\")]
-                        #"/" [PUTC(ctx #"^"")]
-                        ;#"b" [PUTC(ctx #"\b")]
-                        ;#"f" [PUTC(ctx #"\f")]
-                        #"n" [PUTC(ctx #"^M")]
-                        #"r" [PUTC(ctx #"^/")]
-                        #"t" [PUTC(ctx #"^-")]
+                        #"^""   [PUTC(ctx #"^"")]
+                        #"\"    [PUTC(ctx #"\")]
+                        #"/"    [PUTC(ctx #"/")]
+                        #"n"    [PUTC(ctx #"^M")]
+                        #"r"    [PUTC(ctx #"^/")]
+                        #"t"    [PUTC(ctx #"^-")]
+                        ;- TODO 这几个转义符不知道在 R/S 里怎么对应
+                        ;#"b"    [PUTC(ctx #"\b")]
+                        ;#"f"    [PUTC(ctx #"\f")]
                         default [
                             ctx/top: head
                             return PARSE_INVALID_STRING_ESCAPE
                         ]
                     ]
-                    p: p + 1
                 ]
                 null-byte [
                     ctx/top: head
                     return PARSE_MISS_QUOTATION_MARK    ;- 没有用 " 结尾
                 ]
                 default [
-                    ;- TODO
+                    ;- TODO 非法字符
                     PUTC(ctx ch)
                 ]
             ]
-
-            p: p + 1
         ]
         0
     ]
@@ -260,12 +264,13 @@ json: context [
         ;- 开始解析
         parse-whitespace ctx        ;- 先清掉前置的空白
         ret: parse-value ctx v
+
         if ret = PARSE_OK [
             parse-whitespace ctx    ;- 再清理后续的空白
             byte: ctx/json
 
             if byte/1 <> null-byte [
-                print-line "    terminated not by null-byte"
+                print-line ["    terminated by not null-byte: " byte/1]
                 v/type: JSON_NULL
                 ret: PARSE_ROOT_NOT_SINGULAR
             ]
@@ -319,14 +324,29 @@ json: context [
     context-pop: func [
         ctx     [json-conetxt!]
         size    [integer!]
-        return: [c-string!]
+        return: [byte-ptr!]
+        /local  ret
     ][
-        assert ctx/top > size
+        assert ctx/top >= size
         ctx/top: ctx/top - size
-        as-c-string ctx/stack + ctx/top         ;- 返回缩减后的栈顶指针
+        ret: ctx/stack + ctx/top         ;- 返回缩减后的栈顶指针
+        ;- Note: 如果是空字符串，这里返回的是地址 0，小心
+        ;print-line ["context-pop ret: " ret "."]
+        ret
     ]
 
     ;------------ Accessing functions -------------
+
+    init-value: func [v [json-value!]][
+        assert v <> null
+        v/type: JSON_NULL
+    ]
+
+    free-value: func [v [json-value!]][
+        assert v <> null
+        if v/type = JSON_STRING [free as byte-ptr! v/str]
+        v/type: JSON_NULL 
+    ]
 
     get-type: func [
         v       [json-value!]
@@ -334,6 +354,12 @@ json: context [
     ][
         assert v <> null
         v/type
+    ]
+
+    set-number: func [v [json-value!] num [float!]][
+        free-value v
+        v/num: num
+        v/type: JSON_NUMBER
     ]
 
     get-number: func [v [json-value!] return: [float!]][
@@ -344,10 +370,9 @@ json: context [
         v/num
     ]
 
-    set-number: func [v [json-value!] num [float!]][
+    set-boolean: func [v [json-value!] b [logic!]][
         free-value v
-        v/num: num
-        v/type: JSON_NUMBER
+        v/type: either b [JSON_TRUE][JSON_FALSE]
     ]
 
     get-boolean: func [v [json-value!] return: [logic!]][
@@ -358,9 +383,28 @@ json: context [
         v/type = JSON_TRUE
     ]
 
-    set-boolean: func [v [json-value!] b [logic!]][
-        free-value v
-        v/type: either b [JSON_TRUE][JSON_FALSE]
+    set-string: func [
+        v       [json-value!]
+        str     [byte-ptr!]
+        len     [integer!]
+        /local  target p
+    ][
+        assert all [
+            v <> null
+            any [str <> null len = 0]]          ;- 非空指针，或空字符串
+
+        free-value v    ;- 确保原本的 v 可能是已经分配过的 string 被释放掉
+
+        target: allocate len + 1  ;- 包含字符串终结符
+
+        ;- Note: pop 返回 byte-ptr! 是因为由用户手工补上末尾的 null 更好
+        copy-memory target str len
+
+        p: target + len
+        p/value: null-byte  ;- 补上字符串终结符才能转成 c-string!
+        v/str: as-c-string target
+        v/len: len
+        v/type: JSON_STRING
     ]
 
     get-string: func [v [json-value!] return: [c-string!]][
@@ -380,35 +424,6 @@ json: context [
 
         v/len
     ]
-
-    init-value: func [v [json-value!]][
-        assert v <> null
-        v/type: JSON_NULL
-    ]
-
-    free-value: func [v [json-value!]][
-        assert v <> null
-        if v/type = JSON_STRING [free as byte-ptr! v/str]
-        v/type: JSON_NULL 
-    ]
-
-    set-string: func [
-        v       [json-value!]
-        str     [c-string!]
-        len     [integer!]
-    ][
-        assert all [
-            v <> null
-            any [str <> null len = 0]]    ;- 非空指针，或空字符串
-
-        free-value v    ;- 确保原本的 v 可能是已经分配过的 string 被释放掉
-
-        v/str: as-c-string allocate size? str   ;- 包含末尾的 null 终结符
-        copy-memory as byte-ptr! v/str as byte-ptr! str size? str
-        v/len: len
-        v/type: JSON_STRING
-    ]
-
 ]
 
 comment {
