@@ -20,19 +20,21 @@ Red/System []
     PARSE_INVALID_STRING_ESCAPE
 ]
 
-json-value!: alias struct! [
-    type    [json-type!]    ;- 类型
-    ;- Note: Red/System 不支持 union，所以只能冗余 num 和 str 两种情况
-    num     [float!]        ;- 数值
-    str     [c-string!]     ;- 字符串
-    len     [integer!]      ;- 字符串长度
+;- Note: Red/System 不支持 union 联合体，
+;-       所以只能在结果体里冗余 number/string/array 几种情况
+json-value!: alias struct! [    ;- 用于承载解析后的结果
+    type    [json-type!]        ;- 类型，见 json-type!
+    num     [float!]            ;- 数值
+    str     [c-string!]         ;- 字符串
+    arr     [json-value!]       ;- 指向 json-value! 的数组，嵌套了自身类型的指针
+    len     [integer!]          ;- 字符串长度 or 数组元素个数
 ]
 
-json-conetxt!: alias struct! [
-    json    [c-string!]     ;- JSON 字符串
-    stack   [byte-ptr!]     ;- 动态数组，按字节存储
-    size    [integer!]      ;- 当前栈大小，按 byte 计
-    top     [integer!]      ;- 可 push/pop 任意大小
+json-conetxt!: alias struct! [  ;- 用于承载解析过程的中间数据
+    json    [c-string!]         ;- JSON 字符串
+    stack   [byte-ptr!]         ;- 动态数组，按字节存储
+    size    [integer!]          ;- 当前栈大小，按 byte 计
+    top     [integer!]          ;- 可 push/pop 任意大小
 ]
 
 
@@ -222,6 +224,56 @@ json: context [
         0
     ]
 
+    parse-array: func [
+        ctx     [json-conetxt!]
+        v       [json-value!]
+        return: [json-parse-result!]
+        /local  p ch e ret size target
+    ][
+        expect ctx #"["
+
+        size: 0
+
+        if ctx/json/1 = #"]" [
+            ctx/json: ctx/json + 1
+            v/type: JSON_ARRAY
+            v/len: 0
+            v/arr: null             ;- 空数组
+            return PARSE_OK
+        ]
+
+        forever [
+            e: declare json-value!              ;- 承载数组的元素
+            init-value e
+
+            ret: parse-value ctx e              ;- 用新的 json-value! 承载元素
+            if ret <> PARSE_OK [return ret]     ;- 解析元素失败
+
+            ;- 解析元素成功，把 json-value! 结构入栈，返回可用的起始地址，用新的元素来填充
+            target: context-push ctx size? json-value!
+            copy-memory target e size? json-value!
+
+            size: size + 1
+
+            if ctx/json/1 = #"," [
+                ctx/json: ctx/json + 1     ;- 跳过数组内的逗号
+            ]
+
+            ch: p/1
+            p: p + 1
+
+            switch ch [
+                #"]" [
+                    ;- 数组结束
+                ]
+                default [
+                    ctx/json: p
+                    return parse-value ctx v
+                ]
+            ]
+        ]
+    ]
+
     parse-value: func [
         ctx     [json-conetxt!]
         v       [json-value!]
@@ -235,6 +287,7 @@ json: context [
             #"t"    [return parse-true ctx v]
             #"f"    [return parse-false ctx v]
             #"^""   [return parse-string ctx v]
+            #"["    [return parse-array ctx v]
             null-byte [
                 ;print-line "    null-byte"
                 return PARSE_EXPECT_VALUE
@@ -298,7 +351,7 @@ json: context [
     context-push: func [
         ctx     [json-conetxt!]
         size    [integer!]
-        return: [byte-ptr!]
+        return: [byte-ptr!]         ;- 返回可用的起始地址
         /local  ret
     ][
         assert size > 0
@@ -348,10 +401,7 @@ json: context [
         v/type: JSON_NULL 
     ]
 
-    get-type: func [
-        v       [json-value!]
-        return: [json-type!]
-    ][
+    get-type: func [v [json-value!] return: [json-type!]][
         assert v <> null
         v/type
     ]
@@ -366,7 +416,6 @@ json: context [
         assert all [
             v <> null
             v/type = JSON_NUMBER]
-
         v/num
     ]
 
@@ -379,7 +428,6 @@ json: context [
         assert all [
             v <> null
             any [v/type = JSON_FALSE v/type = JSON_TRUE]]
-
         v/type = JSON_TRUE
     ]
 
@@ -412,7 +460,6 @@ json: context [
             v <> null
             v/type = JSON_STRING
             v/str <> null]
-
         v/str
     ]
 
@@ -421,8 +468,29 @@ json: context [
             v <> null
             v/type = JSON_STRING
             v/str <> null]
-
         v/len
+    ]
+
+    get-array-size: func [v [json-value!] return: [integer!]][
+        assert all [
+            v <> null
+            v/type = JSON_ARRAY
+            v/arr <> null]
+        v/arr/len
+    ]
+
+    get-array-element: func [
+        v       [json-value!]
+        index   [integer!]      ;- 下标基于 0
+        return: [json-value!]
+    ][
+        assert all [
+            v <> null
+            v/type = JSON_ARRAY
+            v/arr <> null]
+        assert index < v/arr/len
+
+        v/arr + index           ;- 下标基于 0
     ]
 ]
 

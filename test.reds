@@ -235,6 +235,17 @@ test-parse-string: func [/local v][
     print-line "-------"
 ]
 
+test-parse-array: func [/local v][
+    v: declare json-value!
+    json/init-value v
+
+    expect-eq-int PARSE_OK json/parse v "[ ]"
+    expect-eq-int JSON_ARRAY json/get-type v
+    expect-eq-int 0 json/get-array-size v
+
+    json/free-value v
+]
+
 test-parse: does [
     ;test-parse-null
     ;test-parse-true
@@ -246,6 +257,7 @@ test-parse: does [
     ;test-parse-number-too-big      ;- no working
 
     test-parse-string
+    test-parse-array
 
     ;test-access-string
     ;test-access-boolean
