@@ -18,6 +18,7 @@ Red/System []
     PARSE_NUMBER_TOO_BIG
     PARSE_MISS_QUOTATION_MARK
     PARSE_INVALID_STRING_ESCAPE
+    PARSE_MISSING_COMMA_OR_SQUARE_BRACKET
 ]
 
 ;- Note: Red/System 不支持 union 联合体，
@@ -230,48 +231,62 @@ json: context [
         return: [json-parse-result!]
         /local  p ch e ret size target
     ][
-        expect ctx #"["
-
         size: 0
+        expect ctx #"["
+        parse-whitespace ctx                    ;- 第一个元素前可能有空白符
 
         if ctx/json/1 = #"]" [
             ctx/json: ctx/json + 1
             v/type: JSON_ARRAY
             v/len: 0
-            v/arr: null             ;- 空数组
+            v/arr: null                         ;- 空数组
             return PARSE_OK
         ]
 
         forever [
             e: declare json-value!              ;- 承载数组的元素
             init-value e
+            parse-whitespace ctx                ;- 每个元素前可能有空白符
 
-            ret: parse-value ctx e              ;- 用新的 json-value! 承载元素
+            ret: parse-value ctx e              ;- 解析元素，并用新的 json-value! 来承载
             if ret <> PARSE_OK [return ret]     ;- 解析元素失败
 
-            ;- 解析元素成功，把 json-value! 结构入栈，返回可用的起始地址，用新的元素来填充
+            ;- 解析元素成功
+            ;- 把 json-value! 结构入栈（起始是申请空间，返回可用的起始地址），
+            ;- 用解析得到的元素来填充栈空间，释放掉这个临时 json-value! 结构
             target: context-push ctx size? json-value!
-            copy-memory target e size? json-value!
+            copy-memory target as byte-ptr! e size? json-value!
+            ;free-value e
 
             size: size + 1
 
-            if ctx/json/1 = #"," [
-                ctx/json: ctx/json + 1     ;- 跳过数组内的逗号
-            ]
+            parse-whitespace ctx                ;- 每个元素结束后可能有空白符
 
-            ch: p/1
-            p: p + 1
-
-            switch ch [
+            ;printf ["array next char: %c^/" ctx/json/1]
+            switch ctx/json/1 [
+                #"," [
+                    ctx/json: ctx/json + 1      ;- 跳过数组内的逗号
+                ]
                 #"]" [
-                    ;- 数组结束
+                    ctx/json: ctx/json + 1      ;- 数组结束
+                    v/type: JSON_ARRAY
+                    v/len: size
+
+                    size: size * size? json-value!
+                    target: allocate size
+                    copy-memory target context-pop ctx size size
+
+                    v/arr: as json-value! target
+
+                    return PARSE_OK
                 ]
                 default [
-                    ctx/json: p
-                    return parse-value ctx v
+                    ;- 异常，元素后面既不是逗号，也不是方括号来结束
+                    return PARSE_MISSING_COMMA_OR_SQUARE_BRACKET
                 ]
             ]
         ]
+        ret
     ]
 
     parse-value: func [
@@ -348,10 +363,14 @@ json: context [
         ]
     ]
 
+    ;- 解析过程中入栈，其实是在栈中申请指定的 size 个 byte!，
+    ;- 然后调用方把值写入这个申请到的空间，例如：
+    ;-      1. string 的每一个字符
+    ;-      2. 数组或对象的每一个元素（json-value! 结构）
     context-push: func [
         ctx     [json-conetxt!]
         size    [integer!]
-        return: [byte-ptr!]         ;- 返回可用的起始地址
+        return: [byte-ptr!]             ;- 返回可用的起始地址
         /local  ret
     ][
         assert size > 0
@@ -359,9 +378,7 @@ json: context [
         ;- 栈空间不足
         if ctx/top + size >= ctx/size [
             ;- 首次初始化
-            if ctx/size = 0 [
-                ctx/size: PARSE_STACK_INIT_SIZE
-            ]
+            if ctx/size = 0 [ctx/size: PARSE_STACK_INIT_SIZE]
 
             while [ctx/top + size >= ctx/size][
                 ctx/size: ctx/size + (ctx/size >> 1)    ;- 每次加 2倍
@@ -369,11 +386,14 @@ json: context [
             ctx/stack: realloc ctx/stack ctx/size       ;- 重新分配内存
         ]
 
-        ret: ctx/stack + ctx/top    ;- 返回数据起始的指针
-        ctx/top: ctx/top + size     ;- 指向新的栈顶
+        ret: ctx/stack + ctx/top        ;- 返回数据起始的指针
+        ctx/top: ctx/top + size         ;- 指向新的栈顶
         ret
     ]
 
+    
+    ;- pop 返回 byte-ptr!，由调用者根据情况补上末尾的 null 来形成 c-string!，
+    ;- 因为栈不是只给 string 使用的，数组、对象都要用到
     context-pop: func [
         ctx     [json-conetxt!]
         size    [integer!]
@@ -381,9 +401,10 @@ json: context [
         /local  ret
     ][
         assert ctx/top >= size
-        ctx/top: ctx/top - size
-        ret: ctx/stack + ctx/top         ;- 返回缩减后的栈顶指针
-        ;- Note: 如果是空字符串，这里返回的是地址 0，小心
+        ctx/top: ctx/top - size         ;- 更新栈顶指针
+        ret: ctx/stack + ctx/top        ;- 返回缩减后的栈顶指针：栈基地址 + 偏移
+
+        ;- Note: 如果 json 是空字符串，这里返回的是地址 0，小心
         ;print-line ["context-pop ret: " ret "."]
         ret
     ]
@@ -395,9 +416,22 @@ json: context [
         v/type: JSON_NULL
     ]
 
-    free-value: func [v [json-value!]][
+    free-value: func [v [json-value!] /local i e][
         assert v <> null
-        if v/type = JSON_STRING [free as byte-ptr! v/str]
+        switch v/type [
+            JSON_STRING [free as byte-ptr! v/str]
+            JSON_ARRAY  [
+                ;- 递归释放数组中每一个元素
+                i: 1
+                while [i < v/len][
+                    e: v/arr + i
+                    free-value e
+                    i: i + 1
+                ]
+                free as byte-ptr! v/arr
+            ]
+            default     []
+        ]
         v/type: JSON_NULL 
     ]
 
@@ -441,11 +475,13 @@ json: context [
             v <> null
             any [str <> null len = 0]]          ;- 非空指针，或空字符串
 
-        free-value v    ;- 确保原本的 v 可能是已经分配过的 string 被释放掉
+        ;- 确保传入的 json-value! 中的 str/arr 被释放掉
+        free-value v
 
         target: allocate len + 1  ;- 包含字符串终结符
 
-        ;- Note: pop 返回 byte-ptr! 是因为由用户手工补上末尾的 null 更好
+        ;- Note: pop 返回 byte-ptr! 是因为在这里补上末尾的 null 形成 c-string!
+        ;- 如果 pop 返回 c-string! 好像挺难搞，会遇到偶数字节时末尾有异常字符
         copy-memory target str len
 
         p: target + len
@@ -474,9 +510,8 @@ json: context [
     get-array-size: func [v [json-value!] return: [integer!]][
         assert all [
             v <> null
-            v/type = JSON_ARRAY
-            v/arr <> null]
-        v/arr/len
+            v/type = JSON_ARRAY]
+        v/len
     ]
 
     get-array-element: func [
@@ -486,9 +521,8 @@ json: context [
     ][
         assert all [
             v <> null
-            v/type = JSON_ARRAY
-            v/arr <> null]
-        assert index < v/arr/len
+            v/type = JSON_ARRAY]
+        assert index < v/len
 
         v/arr + index           ;- 下标基于 0
     ]

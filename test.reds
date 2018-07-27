@@ -221,13 +221,13 @@ test-access-number: func [/local v][
 ]
 
 test-parse-string: func [/local v][
-    ;TEST_STRING("ab123" {"ab123"})
-    ;print-line "-------"
-    ;TEST_STRING("" {""})
-    ;print-line "-------"
-    ;TEST_STRING("hello" {"hello"})
-    ;print-line "-------"
-    ;TEST_STRING("hello red" {"hello red"})
+    TEST_STRING("ab123" {"ab123"})
+    print-line "-------"
+    TEST_STRING("" {""})
+    print-line "-------"
+    TEST_STRING("hello" {"hello"})
+    print-line "-------"
+    TEST_STRING("hello red" {"hello red"})
     print-line "-------"
     TEST_STRING("^""    {"\""})
     TEST_STRING("\"     {"\\"})
@@ -235,7 +235,7 @@ test-parse-string: func [/local v][
     print-line "-------"
 ]
 
-test-parse-array: func [/local v][
+test-parse-array: func [/local v e][
     v: declare json-value!
     json/init-value v
 
@@ -243,7 +243,33 @@ test-parse-array: func [/local v][
     expect-eq-int JSON_ARRAY json/get-type v
     expect-eq-int 0 json/get-array-size v
 
+    expect-eq-int PARSE_OK json/parse v " [ 1 , 2 ] "
+    expect-eq-int JSON_ARRAY json/get-type v
+    expect-eq-int 2 json/get-array-size v
+
+    e: json/get-array-element v 0
+    expect-eq-float 1.0 e/num
+
+    expect-eq-int PARSE_OK json/parse v {[ null , false , true , 123 , "abc" ]}
+    expect-eq-int JSON_ARRAY json/get-type v
+    expect-eq-int 5 json/get-array-size v
+
+    e: json/get-array-element v 4
+    expect-eq-string "abc" json/get-string e json/get-string-length e
+    e: json/get-array-element v 1
+    expect-eq-int JSON_FALSE json/get-type e
+
+    expect-eq-int PARSE_OK json/parse v {[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]}
+    expect-eq-int JSON_ARRAY json/get-type v
+    expect-eq-int 4 json/get-array-size v
+
+    e: json/get-array-element v 3
+    expect-eq-int JSON_ARRAY json/get-type e
+    e: json/get-array-element e 1
+    expect-eq-float 1.0 e/num
+
     json/free-value v
+    json/free-value e
 ]
 
 test-parse: does [
@@ -256,7 +282,7 @@ test-parse: does [
     ;test-parse-number
     ;test-parse-number-too-big      ;- no working
 
-    test-parse-string
+    ;test-parse-string
     test-parse-array
 
     ;test-access-string
