@@ -116,6 +116,10 @@ test-parse-invalid-value: func [/local v][
     TEST_ERROR(PARSE_INVALID_VALUE "+1");
     TEST_ERROR(PARSE_INVALID_VALUE ".123"); /* at least one digit before '.' */
     TEST_ERROR(PARSE_INVALID_VALUE "1.");   /* at least one digit after '.' */
+
+    ; invalid value in array 即栈中有内存未释放
+    TEST_ERROR(PARSE_INVALID_VALUE "[1,]")
+    TEST_ERROR(PARSE_INVALID_VALUE {["a", nul]})
 ]
 
 test-parse-root-not-singular: func [/local v][
@@ -313,7 +317,7 @@ test-parse: does [
     ;test-parse-true
     ;test-parse-false
     ;test-parse-expect-value
-    ;test-parse-invalid-value
+    test-parse-invalid-value
     ;test-parse-root-not-singular
     ;test-parse-number
     ;test-parse-number-too-big      ;- no working
