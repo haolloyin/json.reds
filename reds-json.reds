@@ -250,7 +250,7 @@ json: context [
             parse-whitespace ctx                ;- 每个元素前可能有空白符
 
             ret: parse-value ctx e              ;- 解析元素，并用新的 json-value! 来承载
-            if ret <> PARSE_OK [return ret]     ;- 解析元素失败
+            if ret <> PARSE_OK [break]          ;- 解析元素失败，跳出 while 释放内存
 
             ;- 解析元素成功
             ;- 把 json-value! 结构入栈（其实是申请空间，返回可用的起始地址），
@@ -273,23 +273,24 @@ json: context [
                     v/len: size
 
                     size: size * size? json-value!
-                    target: allocate size
+                    target: allocate size       ;- 注意，这里用 malloc 分配内存
                     copy-memory target (context-pop ctx size) size
 
-                    v/arr: as json-value! target
+                    v/arr: as json-value! target;- 这里其实是 json-value! 数组
 
                     return PARSE_OK
                 ]
                 default [
                     ;- 异常，元素后面既不是逗号，也不是方括号来结束
+                    ;- 先保存解析结果，跳出 while 之后清理栈中已分配的内存
                     ret: PARSE_MISSING_COMMA_OR_SQUARE_BRACKET
                     break
                 ]
             ]
         ]
         
-        ;- Note: 栈只是弹出指定的地址（空间）来构造 json-value!，
-        ;- 此时栈中还有一些 json-value! 会指向用 malloc 分配而来的地址
+        ;- 这里只有当解析失败时才需要释放由 malloc 分配在栈中的内存，
+        ;- 因为解析成功时，分配的内存是用于存放解析得到的值，由调用者释放
         i: 0
         while [i < size] [
             free-value as json-value! (context-pop ctx size? json-value!)
