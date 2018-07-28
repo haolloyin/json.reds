@@ -235,7 +235,7 @@ test-parse-string: func [/local v][
     print-line "-------"
 ]
 
-test-parse-array: func [/local v e][
+test-parse-array: func [/local v e i j v1 v2][
     v: declare json-value!
     json/init-value v
 
@@ -254,14 +254,50 @@ test-parse-array: func [/local v e][
     expect-eq-int JSON_ARRAY json/get-type v
     expect-eq-int 5 json/get-array-size v
 
-    e: json/get-array-element v 4
-    expect-eq-string "abc" json/get-string e json/get-string-length e
+    e: json/get-array-element v 0
+    expect-eq-int JSON_NULL json/get-type e
     e: json/get-array-element v 1
     expect-eq-int JSON_FALSE json/get-type e
+    e: json/get-array-element v 2
+    expect-eq-int JSON_TRUE json/get-type e
+    e: json/get-array-element v 3
+    expect-eq-int JSON_NUMBER json/get-type e
+    e: json/get-array-element v 4
+    expect-eq-int JSON_STRING json/get-type e
+
+    e: json/get-array-element v 3
+    expect-eq-float 123.0 json/get-number e
+    e: json/get-array-element v 4
+    expect-eq-string "abc" json/get-string e json/get-string-length e
 
     expect-eq-int PARSE_OK json/parse v {[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]}
     expect-eq-int JSON_ARRAY json/get-type v
     expect-eq-int 4 json/get-array-size v
+
+    i: json/get-array-size v
+    while [i > 0] [
+        v1: declare json-value!
+        json/init-value v1
+
+        v1: json/get-array-element v (4 - i)
+        expect-eq-int JSON_ARRAY json/get-type v1
+        expect-eq-int (4 - i) json/get-array-size v1
+
+        j: 0
+        while [j < (4 - i)] [
+            printf ["i:%d, j:%d^/" (4 - i) j]
+            v2: declare json-value!
+            json/init-value v2 
+
+            v2: json/get-array-element v1 j
+            expect-eq-int JSON_NUMBER json/get-type v2
+            expect-eq-float as-float j json/get-number v2 j
+            j: j + 1
+        ]
+
+        i: i - 1
+    ]
+    
 
     e: json/get-array-element v 3
     expect-eq-int JSON_ARRAY json/get-type e
