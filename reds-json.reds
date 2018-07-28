@@ -189,6 +189,7 @@ json: context [
                 #"^"" [     ;- 字符串结束符
                     len: ctx/top - head
                     ;print-line ["parse-string finish with len: " len]
+                    ;- 从栈中取出所有字符来构造成 c-string!
                     set-string v (context-pop ctx len) len
                     ctx/json: p
                     return PARSE_OK
@@ -229,7 +230,7 @@ json: context [
         ctx     [json-conetxt!]
         v       [json-value!]
         return: [json-parse-result!]
-        /local  p ch e ret size target
+        /local  p ch e ret size target i
     ][
         size: 0
         expect ctx #"["
@@ -252,11 +253,10 @@ json: context [
             if ret <> PARSE_OK [return ret]     ;- 解析元素失败
 
             ;- 解析元素成功
-            ;- 把 json-value! 结构入栈（起始是申请空间，返回可用的起始地址），
+            ;- 把 json-value! 结构入栈（其实是申请空间，返回可用的起始地址），
             ;- 用解析得到的元素来填充栈空间，释放掉这个临时 json-value! 结构
             target: context-push ctx size? json-value!
-            copy-memory target as byte-ptr! e size? json-value!
-            ;free-value e
+            copy-memory target (as byte-ptr! e) (size? json-value!)
 
             size: size + 1
 
@@ -268,13 +268,13 @@ json: context [
                     ctx/json: ctx/json + 1      ;- 跳过数组内的逗号
                 ]
                 #"]" [
-                    ctx/json: ctx/json + 1      ;- 数组结束
+                    ctx/json: ctx/json + 1      ;- 数组结束，从栈中复制到 json-value!
                     v/type: JSON_ARRAY
                     v/len: size
 
                     size: size * size? json-value!
                     target: allocate size
-                    copy-memory target context-pop ctx size size
+                    copy-memory target (context-pop ctx size) size
 
                     v/arr: as json-value! target
 
@@ -282,10 +282,20 @@ json: context [
                 ]
                 default [
                     ;- 异常，元素后面既不是逗号，也不是方括号来结束
-                    return PARSE_MISSING_COMMA_OR_SQUARE_BRACKET
+                    ret: PARSE_MISSING_COMMA_OR_SQUARE_BRACKET
+                    break
                 ]
             ]
         ]
+        
+        ;- Note: 栈只是弹出指定的地址（空间）来构造 json-value!，
+        ;- 此时栈中还有一些 json-value! 会指向用 malloc 分配而来的地址
+        i: 0
+        while [i < size] [
+            free-value as json-value! (context-pop ctx size? json-value!)
+            i: i + 1
+        ]
+
         ret
     ]
 
@@ -473,19 +483,19 @@ json: context [
     ][
         assert all [
             v <> null
-            any [str <> null len = 0]]          ;- 非空指针，或空字符串
+            any [str <> null len = 0]]      ;- 非空指针，或空字符串
 
         ;- 确保传入的 json-value! 中的 str/arr 被释放掉
         free-value v
 
-        target: allocate len + 1  ;- 包含字符串终结符
+        target: allocate len + 1            ;- 包含字符串终结符
 
         ;- Note: pop 返回 byte-ptr! 是因为在这里补上末尾的 null 形成 c-string!
         ;- 如果 pop 返回 c-string! 好像挺难搞，会遇到偶数字节时末尾有异常字符
         copy-memory target str len
 
         p: target + len
-        p/value: null-byte  ;- 补上字符串终结符才能转成 c-string!
+        p/value: null-byte                  ;- 补上字符串终结符才能转成 c-string!
         v/str: as-c-string target
         v/len: len
         v/type: JSON_STRING
