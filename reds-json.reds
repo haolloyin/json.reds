@@ -28,7 +28,14 @@ json-value!: alias struct! [    ;- 用于承载解析后的结果
     num     [float!]            ;- 数值
     str     [c-string!]         ;- 字符串
     arr     [json-value!]       ;- 指向 json-value! 的数组，嵌套了自身类型的指针
+    obj     [byte-ptr!]         ;- 指向 json-member! 即 JSON 对象的数组
     len     [integer!]          ;- 字符串长度 or 数组元素个数
+]
+
+json-member!: alias struct! [
+    key     [c-string!]         ;- key
+    klen    [integer!]          ;- key 的字符个数
+    val     [json-value!]       ;- 值
 ]
 
 json-conetxt!: alias struct! [  ;- 用于承载解析过程的中间数据
@@ -537,21 +544,57 @@ json: context [
 
         v/arr + index           ;- 下标基于 0
     ]
+
+    get-object-size: func [v [json-value!] return: [integer!]][
+        assert all [
+            v <> null
+            v/type = JSON_OBJECT]
+        v/len
+    ]
+
+    get-object-key: func [
+        v       [json-value!]
+        index   [integer!]      ;- 下标基于 0
+        return: [c-string!]
+        /local  member
+    ][
+        assert all [
+            v <> null
+            v/type = JSON_OBJECT]
+        assert index < v/len
+
+        member: (as json-member! v/obj) + index
+        member/key
+    ]
+
+    get-object-key-length: func [
+        v       [json-value!]
+        index   [integer!]      ;- 下标基于 0
+        return: [integer!]
+        /local  member
+    ][
+        assert all [
+            v <> null
+            v/type = JSON_OBJECT]
+        assert index < v/len
+
+        member: (as json-member! v/obj) + index
+        member/klen
+    ]
+
+    get-object-value: func [
+        v       [json-value!]
+        index   [integer!]      ;- 下标基于 0
+        return: [json-value!]
+        /local  member
+    ][
+        assert all [
+            v <> null
+            v/type = JSON_OBJECT]
+        assert index < v/len
+
+        member: (as json-member! v/obj) + index
+        member/val
+    ]
 ]
-
-comment {
-    JSON syntax ABNF:
-
-    JSON-text = ws value ws
-        ws = *(%x20 / %x09 / %x0A / %x0D)
-        value = null / false / true 
-        null  = "null"
-        false = "false"
-        true  = "true"
-
-    number = [ "-" ] int [ frac ] [ exp ]
-    int = "0" / digit1-9 *digit
-    frac = "." 1*digit
-    exp = ("e" / "E") ["-" / "+"] 1*digit
-}
 
