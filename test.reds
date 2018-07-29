@@ -1,6 +1,6 @@
 Red/System []
 
-#include %reds-json.reds
+#include %json.reds
 
 
 main-ret:   0
