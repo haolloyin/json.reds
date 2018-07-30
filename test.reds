@@ -313,21 +313,21 @@ test-parse-array: func [/local v e i j v1 v2][
 ]
 
 test-parse: does [
-    ;test-parse-null
-    ;test-parse-true
-    ;test-parse-false
-    ;test-parse-expect-value
+    test-parse-null
+    test-parse-true
+    test-parse-false
+    test-parse-expect-value
     test-parse-invalid-value
-    ;test-parse-root-not-singular
-    ;test-parse-number
+    test-parse-root-not-singular
+    test-parse-number
     ;test-parse-number-too-big      ;- no working
 
-    ;test-parse-string
+    test-parse-string
     test-parse-array
 
-    ;test-access-string
-    ;test-access-boolean
-    ;test-access-number
+    test-access-string
+    test-access-boolean
+    test-access-number
 
 ]
 

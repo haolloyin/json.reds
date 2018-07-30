@@ -38,86 +38,76 @@ json-member!: alias struct! [
     val     [json-value!]       ;- 值
 ]
 
-json-conetxt!: alias struct! [  ;- 用于承载解析过程的中间数据
-    json    [c-string!]         ;- JSON 字符串
-    stack   [byte-ptr!]         ;- 动态数组，按字节存储
-    size    [integer!]          ;- 当前栈大小，按 byte 计
-    top     [integer!]          ;- 可 push/pop 任意大小
-]
-
 
 json: context [
-    parse-whitespace: func [
-        ctx     [json-conetxt!]
-        /local  c
-    ][
-        c: ctx/json
+    _ctx: declare struct! [         ;- 用于承载解析过程的中间数据
+        json    [c-string!]         ;- JSON 字符串
+        stack   [byte-ptr!]         ;- 动态数组，按字节存储
+        size    [integer!]          ;- 当前栈大小，按 byte 计
+        top     [integer!]          ;- 可 push/pop 任意大小
+    ]
+
+    parse-whitespace: func [/local c][
+        c: _ctx/json
         while [any [c/1 = space c/1 = tab c/1 = cr c/1 = lf]][
             c: c + 1
         ]
-        ctx/json: c
+        _ctx/json: c
     ]
 
-    expect: func [
-        ctx     [json-conetxt!]
-        char    [byte!]
-        /local  c
-    ][
-        c: ctx/json
+    expect: func [char [byte!] /local c][
+        c: _ctx/json
         assert c/1 = char
-        ctx/json: ctx/json + 1
+        _ctx/json: _ctx/json + 1
     ]
 
     parse-null: func [
-        ctx     [json-conetxt!]
         v       [json-value!]
         return: [json-parse-result!]
         /local  c str
     ][
-        expect ctx #"n"
+        expect #"n"
 
-        str: ctx/json
+        str: _ctx/json
         if any [str/1 <> #"u" str/2 <> #"l" str/3 <> #"l" ][
             return PARSE_INVALID_VALUE
         ]
 
-        ctx/json: ctx/json + 3
+        _ctx/json: _ctx/json + 3
         v/type: JSON_NULL
         PARSE_OK
     ]
 
     parse-true: func [
-        ctx     [json-conetxt!]
         v       [json-value!]
         return: [json-parse-result!]
         /local  c str
     ][
-        expect ctx #"t"
+        expect #"t"
 
-        str: ctx/json
+        str: _ctx/json
         if any [str/1 <> #"r" str/2 <> #"u" str/3 <> #"e"][
             return PARSE_INVALID_VALUE
         ]
 
-        ctx/json: ctx/json + 3
+        _ctx/json: _ctx/json + 3
         v/type: JSON_TRUE
         PARSE_OK
     ]
 
     parse-false: func [
-        ctx     [json-conetxt!]
         v       [json-value!]
         return: [json-parse-result!]
         /local  c str
     ][
-        expect ctx #"f"
+        expect #"f"
 
-        str: ctx/json
+        str: _ctx/json
         if any [str/1 <> #"a" str/2 <> #"l" str/3 <> #"s" str/4 <> #"e" ][
             return PARSE_INVALID_VALUE
         ]
 
-        ctx/json: ctx/json + 4
+        _ctx/json: _ctx/json + 4
         v/type: JSON_FALSE
         PARSE_OK
     ]
@@ -132,12 +122,11 @@ json: context [
     ]
 
     parse-number: func [
-        ctx     [json-conetxt!]
         v       [json-value!]
         return: [json-parse-result!]
         /local  c str end
     ][
-        c: ctx/json
+        c: _ctx/json
 
         ;- 校验格式
         if c/1 = #"-" [c: c + 1]
@@ -163,125 +152,149 @@ json: context [
 
         ;- TODO: 不知道怎么实现数字过大时要用 errno 判断 ERANGE、HUGE_VAL 几个宏的问题
         ;- SEE https://zh.cppreference.com/w/c/string/byte/strtof
-        v/num: strtod as byte-ptr! ctx/json null
+        v/num: strtod as byte-ptr! _ctx/json null
         if null? c [return PARSE_INVALID_VALUE]
 
-        ctx/json: c    ;- 跳到成功转型后的下一个字节
+        _ctx/json: c    ;- 跳到成功转型后的下一个字节
         v/type: JSON_NUMBER
         PARSE_OK
     ]
 
-    #define PUTC(ctx ch) [
-        top: context-push ctx 1
+    #define PUTC(ch) [
+        top: context-push 1
         top/value: ch
     ]
 
-    parse-string: func [
-        ctx     [json-conetxt!]
-        v       [json-value!]
+    parse-string-raw: func [
+        "解析 JSON 字符串，把结果写入 str 和 len"
+        strarr  [str-array!]
+        len-ptr [int-ptr!]
         return: [integer!]
-        /local  head len p ch top
+        /local  head len p ch top ch-ptr ret
     ][
-        head: ctx/top       ;- 记录字符串起始点，即开头的 "
+        head: _ctx/top           ;- 记录字符串起始点，即开头的 "
 
-        ;print-line ["begin parse-string: " ctx/json]
-        expect ctx #"^""    ;- 字符串必定以双引号开头，跳到下一个字符
+        ;printf ["begin parse-string: %s^/" _ctx/json]
+        expect #"^""        ;- 字符串必定以双引号开头，跳到下一个字符
 
-        p: ctx/json
+        p: _ctx/json
         forever [
             ch: p/1
-            p: p + 1        ;- 先指向下一个字符
-            ;print-line ["parse-string ch: " ch]
+            p: p + 1            ;- 先指向下一个字符
+            ;printf ["parse-string ch: %c^/" ch]
             switch ch [
-                #"^"" [     ;- 字符串结束符
-                    len: ctx/top - head
-                    ;print-line ["parse-string finish with len: " len]
+                #"^"" [         ;- 字符串结束符
+                    len: _ctx/top - head
+                    ;printf ["parse-string finish with len: %d^/" len]
                     ;- 从栈中取出所有字符来构造成 c-string!
-                    set-string v (context-pop ctx len) len
-                    ctx/json: p
+                    strarr/item: as-c-string context-pop len
+                    len-ptr/value: len
+
+                    ;printf ["parse-string-raw str:%s^/" strarr/item]
+
+                    _ctx/json: p
+
                     return PARSE_OK
                 ]
                 #"\" [
                     ch: p/1
                     p: p + 1
                     switch ch [
-                        #"^""   [PUTC(ctx #"^"")]
-                        #"\"    [PUTC(ctx #"\")]
-                        #"/"    [PUTC(ctx #"/")]
-                        #"n"    [PUTC(ctx #"^M")]
-                        #"r"    [PUTC(ctx #"^/")]
-                        #"t"    [PUTC(ctx #"^-")]
+                        #"^""   [PUTC(#"^"")]
+                        #"\"    [PUTC(#"\")]
+                        #"/"    [PUTC(#"/")]
+                        #"n"    [PUTC(#"^M")]
+                        #"r"    [PUTC(#"^/")]
+                        #"t"    [PUTC(#"^-")]
                         ;- TODO 这几个转义符不知道在 R/S 里怎么对应
-                        ;#"b"    [PUTC(ctx #"\b")]
-                        ;#"f"    [PUTC(ctx #"\f")]
+                        ;#"b"    [PUTC(#"\b")]
+                        ;#"f"    [PUTC(#"\f")]
                         default [
-                            ctx/top: head
+                            _ctx/top: head
                             return PARSE_INVALID_STRING_ESCAPE
                         ]
                     ]
                 ]
                 null-byte [
-                    ctx/top: head
+                    _ctx/top: head
                     return PARSE_MISS_QUOTATION_MARK    ;- 没有用 " 结尾
                 ]
                 default [
                     ;- TODO 非法字符
-                    PUTC(ctx ch)
+                    PUTC(ch)
                 ]
             ]
         ]
         0
     ]
 
+    parse-string: func [
+        v       [json-value!]
+        return: [integer!]
+        /local
+            strarr  [str-array!]
+            len     [int-ptr!]
+            ret     [integer!]
+    ][
+        strarr: declare str-array!
+        len: declare int-ptr! 0
+
+        ret: parse-string-raw strarr len
+        if ret = PARSE_OK [
+            set-string v (as byte-ptr! strarr/item) len/value
+        ]
+
+        ret
+    ]
+
     parse-array: func [
-        ctx     [json-conetxt!]
         v       [json-value!]
         return: [json-parse-result!]
         /local  p ch e ret size target i
     ][
         size: 0
-        expect ctx #"["
-        parse-whitespace ctx                    ;- 第一个元素前可能有空白符
+        expect #"["
+        parse-whitespace                            ;- 第一个元素前可能有空白符
 
-        if ctx/json/1 = #"]" [
-            ctx/json: ctx/json + 1
+        if _ctx/json/1 = #"]" [
+            _ctx/json: _ctx/json + 1
             v/type: JSON_ARRAY
             v/len: 0
-            v/arr: null                         ;- 空数组
+            v/arr: null                             ;- 空数组
             return PARSE_OK
         ]
 
         forever [
-            e: declare json-value!              ;- 承载数组的元素
+            e: declare json-value!                  ;- 承载数组的元素
             init-value e
-            parse-whitespace ctx                ;- 每个元素前可能有空白符
+            parse-whitespace                        ;- 每个元素前可能有空白符
 
-            ret: parse-value ctx e              ;- 解析元素，并用新的 json-value! 来承载
-            if ret <> PARSE_OK [break]          ;- 解析元素失败，跳出 while 释放内存
+            ret: parse-value e                      ;- 解析元素，并用新的 json-value! 来承载
+            if ret <> PARSE_OK [break]              ;- 解析元素失败，跳出 while 释放内存
 
             ;- 解析元素成功
             ;- 把 json-value! 结构入栈（其实是申请空间，返回可用的起始地址），
             ;- 用解析得到的元素来填充栈空间，释放掉这个临时 json-value! 结构
-            target: context-push ctx size? json-value!
+            target: context-push size? json-value!
             copy-memory target (as byte-ptr! e) (size? json-value!)
 
             size: size + 1
 
-            parse-whitespace ctx                ;- 每个元素结束后可能有空白符
+            parse-whitespace                        ;- 每个元素结束后可能有空白符
 
-            ;printf ["array next char: %c^/" ctx/json/1]
-            switch ctx/json/1 [
+            ;printf ["array next char: %c^/" _ctx/json/1]
+            switch _ctx/json/1 [
                 #"," [
-                    ctx/json: ctx/json + 1      ;- 跳过数组内的逗号
+                    _ctx/json: _ctx/json + 1      ;- 跳过数组内的逗号
                 ]
                 #"]" [
-                    ctx/json: ctx/json + 1      ;- 数组结束，从栈中复制到 json-value!
+                    _ctx/json: _ctx/json + 1      ;- 数组结束，从栈中复制到 json-value!
                     v/type: JSON_ARRAY
                     v/len: size
 
                     size: size * size? json-value!
                     target: allocate size       ;- 注意，这里用 malloc 分配内存
-                    copy-memory target (context-pop ctx size) size
+                    copy-memory target (context-pop size) size
 
                     v/arr: as json-value! target;- 这里其实是 json-value! 数组
 
@@ -300,7 +313,7 @@ json: context [
         ;- 因为解析成功时，分配的内存是用于存放解析得到的值，由调用者释放
         i: 0
         while [i < size] [
-            free-value as json-value! (context-pop ctx size? json-value!)
+            free-value as json-value! (context-pop size? json-value!)
             i: i + 1
         ]
 
@@ -308,26 +321,25 @@ json: context [
     ]
 
     parse-value: func [
-        ctx     [json-conetxt!]
         v       [json-value!]
         return: [json-parse-result!]
         /local  c
     ][
-        c: ctx/json
+        c: _ctx/json
 
         switch c/1 [
-            #"n"    [return parse-null ctx v]
-            #"t"    [return parse-true ctx v]
-            #"f"    [return parse-false ctx v]
-            #"^""   [return parse-string ctx v]
-            #"["    [return parse-array ctx v]
+            #"n"    [return parse-null v]
+            #"t"    [return parse-true v]
+            #"f"    [return parse-false v]
+            #"^""   [return parse-string v]
+            #"["    [return parse-array v]
             null-byte [
                 ;print-line "    null-byte"
                 return PARSE_EXPECT_VALUE
             ]
             default [
                 ;print-line "    default: parse-number"
-                return parse-number ctx v
+                return parse-number v
             ]
         ]
     ]
@@ -336,24 +348,23 @@ json: context [
         v       [json-value!]
         json    [c-string!]
         return: [json-parse-result!]
-        /local  ctx ret byte
+        /local  ret byte
     ][
-        ctx: declare json-conetxt!  ;- 用于装载解析过程中的内容
-        assert ctx <> null
+        assert _ctx <> null
 
-        ctx/json:   json
-        ctx/stack:  null
-        ctx/size:   0
-        ctx/top:    0
+        _ctx/json:   json
+        _ctx/stack:  null
+        _ctx/size:   0
+        _ctx/top:    0
         v/type:     JSON_NULL
 
         ;- 开始解析
-        parse-whitespace ctx        ;- 先清掉前置的空白
-        ret: parse-value ctx v
+        parse-whitespace                ;- 先清掉前置的空白
+        ret: parse-value v
 
         if ret = PARSE_OK [
-            parse-whitespace ctx    ;- 再清理后续的空白
-            byte: ctx/json
+            parse-whitespace            ;- 再清理后续的空白
+            byte: _ctx/json
 
             if byte/1 <> null-byte [
                 print-line ["    terminated by not null-byte: " byte/1]
@@ -363,8 +374,8 @@ json: context [
         ]
 
         ;- 清理空间
-        assert ctx/top = 0
-        free ctx/stack
+        assert _ctx/top = 0
+        free _ctx/stack
 
         ret
     ]
@@ -386,7 +397,6 @@ json: context [
     ;-      1. string 的每一个字符
     ;-      2. 数组或对象的每一个元素（json-value! 结构）
     context-push: func [
-        ctx     [json-conetxt!]
         size    [integer!]
         return: [byte-ptr!]             ;- 返回可用的起始地址
         /local  ret
@@ -394,18 +404,18 @@ json: context [
         assert size > 0
 
         ;- 栈空间不足
-        if ctx/top + size >= ctx/size [
+        if _ctx/top + size >= _ctx/size [
             ;- 首次初始化
-            if ctx/size = 0 [ctx/size: PARSE_STACK_INIT_SIZE]
+            if _ctx/size = 0 [_ctx/size: PARSE_STACK_INIT_SIZE]
 
-            while [ctx/top + size >= ctx/size][
-                ctx/size: ctx/size + (ctx/size >> 1)    ;- 每次加 2倍
+            while [_ctx/top + size >= _ctx/size][
+                _ctx/size: _ctx/size + (_ctx/size >> 1)    ;- 每次加 2倍
             ]
-            ctx/stack: realloc ctx/stack ctx/size       ;- 重新分配内存
+            _ctx/stack: realloc _ctx/stack _ctx/size       ;- 重新分配内存
         ]
 
-        ret: ctx/stack + ctx/top        ;- 返回数据起始的指针
-        ctx/top: ctx/top + size         ;- 指向新的栈顶
+        ret: _ctx/stack + _ctx/top        ;- 返回数据起始的指针
+        _ctx/top: _ctx/top + size         ;- 指向新的栈顶
         ret
     ]
 
@@ -413,14 +423,13 @@ json: context [
     ;- pop 返回 byte-ptr!，由调用者根据情况补上末尾的 null 来形成 c-string!，
     ;- 因为栈不是只给 string 使用的，数组、对象都要用到
     context-pop: func [
-        ctx     [json-conetxt!]
         size    [integer!]
         return: [byte-ptr!]
         /local  ret
     ][
-        assert ctx/top >= size
-        ctx/top: ctx/top - size         ;- 更新栈顶指针
-        ret: ctx/stack + ctx/top        ;- 返回缩减后的栈顶指针：栈基地址 + 偏移
+        assert _ctx/top >= size
+        _ctx/top: _ctx/top - size         ;- 更新栈顶指针
+        ret: _ctx/stack + _ctx/top        ;- 返回缩减后的栈顶指针：栈基地址 + 偏移
 
         ;- Note: 如果 json 是空字符串，这里返回的是地址 0，小心
         ;print-line ["context-pop ret: " ret "."]
