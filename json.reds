@@ -12,13 +12,16 @@ Red/System []
 
 #enum json-parse-result! [
     PARSE_OK: 1
-    PARSE_EXPECT_VALUE
-    PARSE_INVALID_VALUE
-    PARSE_ROOT_NOT_SINGULAR
-    PARSE_NUMBER_TOO_BIG
-    PARSE_MISS_QUOTATION_MARK
-    PARSE_INVALID_STRING_ESCAPE
-    PARSE_MISSING_COMMA_OR_SQUARE_BRACKET
+    PARSE_EXPECT_VALUE: 2
+    PARSE_INVALID_VALUE: 3
+    PARSE_ROOT_NOT_SINGULAR: 4
+    PARSE_NUMBER_TOO_BIG: 5
+    PARSE_MISS_QUOTATION_MARK: 6
+    PARSE_INVALID_STRING_ESCAPE: 7
+    PARSE_MISS_COMMA_OR_SQUARE_BRACKET: 8
+    PARSE_MISS_KEY: 9
+    PARSE_MISS_COLON: 10
+    PARSE_MISS_COMMA_OR_CURLY_BRACKET: 11
 ]
 
 ;- Note: Red/System 不支持 union 联合体，
@@ -28,7 +31,7 @@ json-value!: alias struct! [    ;- 用于承载解析后的结果
     num     [float!]            ;- 数值
     str     [c-string!]         ;- 字符串
     arr     [json-value!]       ;- 指向 json-value! 的数组，嵌套了自身类型的指针
-    obj     [byte-ptr!]         ;- 指向 json-member! 即 JSON 对象的数组
+    objptr  [int-ptr!]          ;- 指向 json-member! 即 JSON 对象的数组的地址
     len     [integer!]          ;- 字符串长度 or 数组元素个数
 ]
 
@@ -165,6 +168,64 @@ json: context [
         top/value: ch
     ]
 
+    ;------------- stack functions ----------------
+
+    #define PARSE_STACK_INIT_SIZE 256   ;- 初始的栈大小
+    #import [
+        LIBC-file cdecl [
+            realloc:    "realloc" [
+                ptr     [byte-ptr!]
+                size    [integer!]
+                return: [byte-ptr!]
+            ]
+        ]
+    ]
+
+    ;- 解析过程中入栈，其实是在栈中申请指定的 size 个 byte!，
+    ;- 然后调用方把值写入这个申请到的空间，例如：
+    ;-      1. string 的每一个字符
+    ;-      2. 数组或对象的每一个元素（json-value! 结构）
+    context-push: func [
+        size    [integer!]
+        return: [byte-ptr!]             ;- 返回可用的起始地址
+        /local  ret
+    ][
+        assert size > 0
+
+        ;- 栈空间不足
+        if _ctx/top + size >= _ctx/size [
+            ;- 首次初始化
+            if _ctx/size = 0 [_ctx/size: PARSE_STACK_INIT_SIZE]
+
+            while [_ctx/top + size >= _ctx/size][
+                _ctx/size: _ctx/size + (_ctx/size >> 1)    ;- 每次加 2倍
+            ]
+            _ctx/stack: realloc _ctx/stack _ctx/size       ;- 重新分配内存
+        ]
+
+        ret: _ctx/stack + _ctx/top        ;- 返回数据起始的指针
+        _ctx/top: _ctx/top + size         ;- 指向新的栈顶
+        ret
+    ]
+    
+    ;- pop 返回 byte-ptr!，由调用者根据情况补上末尾的 null 来形成 c-string!，
+    ;- 因为栈不是只给 string 使用的，数组、对象都要用到
+    context-pop: func [
+        size    [integer!]
+        return: [byte-ptr!]
+        /local  ret
+    ][
+        assert _ctx/top >= size
+        _ctx/top: _ctx/top - size         ;- 更新栈顶指针
+        ret: _ctx/stack + _ctx/top        ;- 返回缩减后的栈顶指针：栈基地址 + 偏移
+
+        ;- Note: 如果 json 是空字符串，这里返回的是地址 0，小心
+        ;print-line ["context-pop ret: " ret "."]
+        ret
+    ]
+
+    ;------------- parsing functions ----------------
+
     parse-string-raw: func [
         "解析 JSON 字符串，把结果写入 str 和 len"
         strarr  [str-array!]
@@ -174,23 +235,23 @@ json: context [
     ][
         head: _ctx/top           ;- 记录字符串起始点，即开头的 "
 
-        ;printf ["begin parse-string: %s^/" _ctx/json]
+        printf ["parse-string-raw start: %s^/" _ctx/json]
         expect #"^""        ;- 字符串必定以双引号开头，跳到下一个字符
 
         p: _ctx/json
         forever [
             ch: p/1
             p: p + 1            ;- 先指向下一个字符
-            ;printf ["parse-string ch: %c^/" ch]
+            printf ["parse-string-raw ch: %c^/" ch]
             switch ch [
                 #"^"" [         ;- 字符串结束符
                     len: _ctx/top - head
-                    ;printf ["parse-string finish with len: %d^/" len]
+                    printf ["parse-string-raw finish with len: %d" len]
                     ;- 从栈中取出所有字符来构造成 c-string!
                     strarr/item: as-c-string context-pop len
                     len-ptr/value: len
 
-                    ;printf ["parse-string-raw str:%s^/" strarr/item]
+                    printf [", str:%s^/" strarr/item]
 
                     _ctx/json: p
 
@@ -303,7 +364,7 @@ json: context [
                 default [
                     ;- 异常，元素后面既不是逗号，也不是方括号来结束
                     ;- 先保存解析结果，跳出 while 之后清理栈中已分配的内存
-                    ret: PARSE_MISSING_COMMA_OR_SQUARE_BRACKET
+                    ret: PARSE_MISS_COMMA_OR_SQUARE_BRACKET
                     break
                 ]
             ]
@@ -314,6 +375,121 @@ json: context [
         i: 0
         while [i < size] [
             free-value as json-value! (context-pop size? json-value!)
+            i: i + 1
+        ]
+
+        ret
+    ]
+
+    parse-object: func [
+        v       [json-value!]
+        return: [json-parse-result!]
+        /local
+            ret     [integer!]
+            size    [integer!]
+            members [json-member!]
+            key     [str-array!]
+            lenptr  [int-ptr!]
+            target  [byte-ptr!]
+            m       [json-member!]
+            e       [json-value!]
+            i       [integer!]
+    ][
+        ret: 0
+        size: 0
+        expect #"{"
+        parse-whitespace                            ;- 第一个元素前可能有空白符
+
+        if _ctx/json/1 = #"}" [
+            _ctx/json: _ctx/json + 1
+            v/type: JSON_OBJECT
+            v/len: 0
+            v/objptr: null                          ;- 空对象
+            return PARSE_OK
+        ]
+
+        members: declare json-member!
+        m: members
+
+        forever [
+            m: members + size
+            m/val: declare json-value!
+            init-value m/val
+            
+            ;- 过程：解析 key -> 逗号/空白 -> value
+
+            if _ctx/json/1 <> #"^"" [               ;- 如果不是 " 开头说明 key 不合法
+                ret: PARSE_MISS_KEY
+                break
+            ]
+
+            ;- 解析得到 key
+            key: declare str-array!
+            lenptr: declare int-ptr! 0
+            ret: parse-string-raw key lenptr
+            if ret <> PARSE_OK [
+                ret: PARSE_MISS_KEY
+                break
+            ]
+
+            ;- 去掉空白
+            parse-whitespace
+            if _ctx/json/1 <> #":" [
+                ret: PARSE_MISS_COLON
+                break
+            ]
+            expect #":"
+            parse-whitespace
+
+            ;- 解析 value
+            e: declare json-value!
+            init-value e
+            ret: parse-value e
+            if ret <> PARSE_OK [break]
+
+            ;- 构造一个 json-member!
+            m/key: as-c-string key
+            m/klen: lenptr/value
+            m/val: e
+            size: size + 1
+
+            target: context-push size? json-member!
+            copy-memory target (as byte-ptr! m) (size? json-member!)
+            m/key: null     ;- 避免重复释放
+
+            parse-whitespace                        ;- 每个元素结束后可能有空白符
+            printf ["obj next char: %c^/" _ctx/json/1]
+            switch _ctx/json/1 [
+                #"," [
+                    _ctx/json: _ctx/json + 1        ;- 跳过逗号
+                ]
+                #"}" [
+                    _ctx/json: _ctx/json + 1        ;- 对象结束，从栈中复制到 json-value!
+                    v/type: JSON_OBJECT
+                    v/len: size
+
+                    size: size * size? json-member!
+                    target: allocate size
+                    copy-memory target (context-pop size) size
+
+                    v/objptr: as int-ptr! target    ;- 这里其实是 json-member! 数组
+
+                    return PARSE_OK
+                ]
+                default [
+                    ret: PARSE_MISS_COMMA_OR_CURLY_BRACKET
+                    break
+                ]
+            ]
+        ]
+        
+        ;- 这里只有当解析失败时才需要释放由 malloc 分配在栈中的内存，
+        ;- 因为解析成功时，分配的内存是用于存放解析得到的值，由调用者释放
+        free as byte-ptr! m/key
+        i: 0
+        while [i < size] [
+            m: as json-member! (context-pop size? json-member!)
+            free-value m/val
             i: i + 1
         ]
 
@@ -333,6 +509,7 @@ json: context [
             #"f"    [return parse-false v]
             #"^""   [return parse-string v]
             #"["    [return parse-array v]
+            #"{"    [return parse-object v]
             null-byte [
                 ;print-line "    null-byte"
                 return PARSE_EXPECT_VALUE
@@ -353,6 +530,7 @@ json: context [
         assert _ctx <> null
 
         _ctx/json:   json
+        printf ["^/--------- origin json: %s^/" json]
         _ctx/stack:  null
         _ctx/size:   0
         _ctx/top:    0
@@ -380,62 +558,6 @@ json: context [
         ret
     ]
 
-    ;------------- stack functions ----------------
-    #define PARSE_STACK_INIT_SIZE 256   ;- 初始的栈大小
-    #import [
-        LIBC-file cdecl [
-            realloc:    "realloc" [
-                ptr     [byte-ptr!]
-                size    [integer!]
-                return: [byte-ptr!]
-            ]
-        ]
-    ]
-
-    ;- 解析过程中入栈，其实是在栈中申请指定的 size 个 byte!，
-    ;- 然后调用方把值写入这个申请到的空间，例如：
-    ;-      1. string 的每一个字符
-    ;-      2. 数组或对象的每一个元素（json-value! 结构）
-    context-push: func [
-        size    [integer!]
-        return: [byte-ptr!]             ;- 返回可用的起始地址
-        /local  ret
-    ][
-        assert size > 0
-
-        ;- 栈空间不足
-        if _ctx/top + size >= _ctx/size [
-            ;- 首次初始化
-            if _ctx/size = 0 [_ctx/size: PARSE_STACK_INIT_SIZE]
-
-            while [_ctx/top + size >= _ctx/size][
-                _ctx/size: _ctx/size + (_ctx/size >> 1)    ;- 每次加 2倍
-            ]
-            _ctx/stack: realloc _ctx/stack _ctx/size       ;- 重新分配内存
-        ]
-
-        ret: _ctx/stack + _ctx/top        ;- 返回数据起始的指针
-        _ctx/top: _ctx/top + size         ;- 指向新的栈顶
-        ret
-    ]
-
-    
-    ;- pop 返回 byte-ptr!，由调用者根据情况补上末尾的 null 来形成 c-string!，
-    ;- 因为栈不是只给 string 使用的，数组、对象都要用到
-    context-pop: func [
-        size    [integer!]
-        return: [byte-ptr!]
-        /local  ret
-    ][
-        assert _ctx/top >= size
-        _ctx/top: _ctx/top - size         ;- 更新栈顶指针
-        ret: _ctx/stack + _ctx/top        ;- 返回缩减后的栈顶指针：栈基地址 + 偏移
-
-        ;- Note: 如果 json 是空字符串，这里返回的是地址 0，小心
-        ;print-line ["context-pop ret: " ret "."]
-        ret
-    ]
-
     ;------------ Accessing functions -------------
 
     init-value: func [v [json-value!]][
@@ -443,7 +565,7 @@ json: context [
         v/type: JSON_NULL
     ]
 
-    free-value: func [v [json-value!] /local i e][
+    free-value: func [v [json-value!] /local i e m][
         assert v <> null
         switch v/type [
             JSON_STRING [free as byte-ptr! v/str]
@@ -456,6 +578,15 @@ json: context [
                     i: i + 1
                 ]
                 free as byte-ptr! v/arr
+            ]
+            JSON_OBJECT [
+                ;- 递归释放对象中每一个元素
+                i: 1
+                while [i < v/len][
+                    m: as json-member! (v/objptr + i)
+                    free-value m/val
+                    i: i + 1
+                ]
             ]
             default     []
         ]
@@ -572,7 +703,7 @@ json: context [
             v/type = JSON_OBJECT]
         assert index < v/len
 
-        member: (as json-member! v/obj) + index
+        member: (as json-member! v/objptr) + index
         member/key
     ]
 
@@ -587,7 +718,7 @@ json: context [
             v/type = JSON_OBJECT]
         assert index < v/len
 
-        member: (as json-member! v/obj) + index
+        member: (as json-member! v/objptr) + index
         member/klen
     ]
 
@@ -602,7 +733,7 @@ json: context [
             v/type = JSON_OBJECT]
         assert index < v/len
 
-        member: (as json-member! v/obj) + index
+        member: (as json-member! v/objptr) + index
         member/val
     ]
 ]

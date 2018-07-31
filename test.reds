@@ -96,8 +96,8 @@ test-parse-false: func [/local v][
 ]
 
 #define TEST_ERROR(expect str) [
-    v: declare json-value!  ;- 会重复调用，测试期间无所谓
-    v/type: JSON_FALSE
+    v: declare json-value!  ;- 会多次调用，测试期间无所谓
+    v/type: JSON_NULL
     expect-eq-int expect json/parse v str
     expect-eq-int JSON_NULL json/get-type v
 ]
@@ -301,7 +301,6 @@ test-parse-array: func [/local v e i j v1 v2][
 
         i: i - 1
     ]
-    
 
     e: json/get-array-element v 3
     expect-eq-int JSON_ARRAY json/get-type e
@@ -312,33 +311,57 @@ test-parse-array: func [/local v e i j v1 v2][
     json/free-value e
 ]
 
-test-parse: does [
-    test-parse-null
-    test-parse-true
-    test-parse-false
-    test-parse-expect-value
-    test-parse-invalid-value
-    test-parse-root-not-singular
-    test-parse-number
-    ;test-parse-number-too-big      ;- no working
-
-    test-parse-string
-    test-parse-array
-
-    test-access-string
-    test-access-boolean
-    test-access-number
-
+test-parse-miss-key: func [/local v][
+    TEST_ERROR(PARSE_MISS_KEY "{ :1 ,")
+    TEST_ERROR(PARSE_MISS_KEY "{1:1,")
+    TEST_ERROR(PARSE_MISS_KEY "{true:1,")
+    TEST_ERROR(PARSE_MISS_KEY "{false:1,")
+    TEST_ERROR(PARSE_MISS_KEY "{null:1,")
+    TEST_ERROR(PARSE_MISS_KEY "{[]:1,")
+    TEST_ERROR(PARSE_MISS_KEY "{^"ab^":1,")
 ]
 
-main: func [return: [integer!]][
+test-parse-miss-colon: func [/local v][
+    TEST_ERROR(PARSE_MISS_COLON "{^"aa^"}")
+    TEST_ERROR(PARSE_MISS_COLON "{^"aaa^", ^"b^"}")
+]
+
+test-parse-miss-comma-or-curly-bracket: func [/local v][
+    TEST_ERROR(PARSE_MISS_COMMA_OR_CURLY_BRACKET "{^"a^":1")
+    TEST_ERROR(PARSE_MISS_COMMA_OR_CURLY_BRACKET "{^"ab^":1]")
+    TEST_ERROR(PARSE_MISS_COMMA_OR_CURLY_BRACKET "{^"abc^":1  ^"bb^"")
+    TEST_ERROR(PARSE_MISS_COMMA_OR_CURLY_BRACKET "{^"abcd^": {}")
+]
+
+test-parse: does [
+    ;test-parse-number-too-big      ;- no working
+
+    ;test-parse-null
+    ;test-parse-true
+    ;test-parse-false
+    ;test-parse-expect-value
+    ;test-parse-invalid-value
+    ;test-parse-root-not-singular
+    ;test-parse-number
+    ;test-parse-string
+    ;test-parse-array
+
+    ;test-access-string
+    ;test-access-boolean
+    ;test-access-number
+
+    test-parse-miss-key
+    test-parse-miss-colon
+    test-parse-miss-comma-or-curly-bracket
+]
+
+main: does [
     test-parse
-
-    printf ["%d/%d (%3.2f%%) passed" test-pass test-count
-        100.0 * test-pass / test-count]
-    print lf
-
-    main-ret
+    either zero? test-count [
+        printf ["^/    >>> Nothing to test^/^/"]
+    ][
+        printf ["^/    >>> %d/%d (%3.2f%%) passed^/^/" test-pass test-count (100.0 * test-pass / test-count)]
+    ]
 ]
 
 main
