@@ -255,7 +255,7 @@ json: context [
 
                     strarr/item: as-c-string bytes
                     len-ptr/value: len
-                    printf [", str:%s^/" strarr/item]
+                    printf [", str: %s^/" strarr/item]
 
                     _ctx/json: p
                     return PARSE_OK
@@ -439,16 +439,19 @@ json: context [
             parse-whitespace
 
             ;- 解析 value
-            init-value m/val
+            printf ["    m: %d, m/val: %d^/" m m/val]
+            m/val: as json-value! allocate size? json-value!
+            init-value m/val                        ;- 必须，否则在 free-value 时会被释放掉
             ret: parse-value m/val
             if ret <> PARSE_OK [break]
 
             ;- 构造一个 json-member!
             printf ["    m/key: %s^/" m/key]
-            printf ["    value m/val/type: %d^/" m/val/type]
-            printf ["    value m/val//num: %.1f^/" m/val/num]
-            printf ["    value m/val/str: %s^/" m/val/str]
-            printf ["    value m/val/arr: %d^/" m/val/arr]
+            printf ["    m: %d, m/val: %d^/" m m/val]
+            printf ["    m/val/type: %d^/" m/val/type]
+            printf ["    m/val//num: %.1f^/" m/val/num]
+            printf ["    m/val/str: %s^/" m/val/str]
+            printf ["    m/val/arr: %d^/" m/val/arr]
 
             ;- member! 复制到栈中
             target: context-push size? json-member!
@@ -457,7 +460,6 @@ json: context [
             m/key: null                             ;- 避免重复释放
 
             parse-whitespace                        ;- 每个元素结束后可能有空白符
-            printf ["parse-object next char: %c^/" _ctx/json/1]
             switch _ctx/json/1 [
                 #"," [
                     _ctx/json: _ctx/json + 1        ;- 跳过逗号
@@ -467,8 +469,7 @@ json: context [
                     _ctx/json: _ctx/json + 1        ;- 对象结束，从栈中复制到 json-value!
                     v/type: JSON_OBJECT
                     v/len: size
-                    ;- 从栈中弹出
-                    size: size * size? json-member!
+                    size: size * size? json-member! ;- 从栈中弹出
                     target: allocate size
                     copy-memory target (context-pop size) size
 

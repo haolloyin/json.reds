@@ -354,13 +354,13 @@ test-parse-object1: func [/local v v1 v2][
     expect-eq-string "a" (json/get-object-key v 0) (json/get-object-key-length v 0)
     v1: json/get-object-value v 0
     expect-eq-int JSON_ARRAY json/get-type v1
-    ;expect-eq-int 2 json/get-array-size v1
-    ;v2: json/get-array-element v1 0
-    ;expect-eq-int JSON_NUMBER json/get-type v2
-    ;expect-eq-float 1.0 json/get-number v2
-    ;v2: json/get-array-element v1 1
-    ;expect-eq-int JSON_STRING json/get-type v2
-    ;expect-eq-string "value1" (json/get-string v2) (json/get-string-length v2)
+    expect-eq-int 2 json/get-array-size v1
+    v2: json/get-array-element v1 0
+    expect-eq-int JSON_NUMBER json/get-type v2
+    expect-eq-float 1.0 json/get-number v2
+    v2: json/get-array-element v1 1
+    expect-eq-int JSON_STRING json/get-type v2
+    expect-eq-string "value1" (json/get-string v2) (json/get-string-length v2)
 
     ;json/free-value v
     ;json/free-value v1
