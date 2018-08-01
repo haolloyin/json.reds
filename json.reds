@@ -2,12 +2,12 @@ Red/System []
 
 #enum json-type! [
     JSON_NULL: 1
-    JSON_FALSE
-    JSON_TRUE
-    JSON_NUMBER
-    JSON_STRING
-    JSON_ARRAY
-    JSON_OBJECT
+    JSON_FALSE: 2
+    JSON_TRUE: 3
+    JSON_NUMBER: 4
+    JSON_STRING: 5
+    JSON_ARRAY: 6
+    JSON_OBJECT: 7
 ]
 
 #enum json-parse-result! [
@@ -220,7 +220,7 @@ json: context [
         ret: _ctx/stack + _ctx/top        ;- 返回缩减后的栈顶指针：栈基地址 + 偏移
 
         ;- Note: 如果 json 是空字符串，这里返回的是地址 0，小心
-        ;print-line ["context-pop ret: " ret "."]
+        ;printf ["context-pop ret: %d.^/" ret]
         ret
     ]
 
@@ -231,30 +231,33 @@ json: context [
         strarr  [str-array!]
         len-ptr [int-ptr!]
         return: [integer!]
-        /local  head len p ch top ch-ptr ret
+        /local  head len p ch top ch-ptr ret bytes end
     ][
         head: _ctx/top           ;- 记录字符串起始点，即开头的 "
 
-        printf ["parse-string-raw start: %s^/" _ctx/json]
+        printf ["parse-string-raw json: %s^/" _ctx/json]
+        ;printf ["parse-string-raw strarr: %d^/" strarr]
         expect #"^""        ;- 字符串必定以双引号开头，跳到下一个字符
 
         p: _ctx/json
         forever [
             ch: p/1
             p: p + 1            ;- 先指向下一个字符
-            printf ["parse-string-raw ch: %c^/" ch]
+            ;printf ["parse-string-raw ch: %c^/" ch]
             switch ch [
                 #"^"" [         ;- 字符串结束符
                     len: _ctx/top - head
                     printf ["parse-string-raw finish with len: %d" len]
                     ;- 从栈中取出所有字符来构造成 c-string!
-                    strarr/item: as-c-string context-pop len
-                    len-ptr/value: len
+                    bytes: context-pop len
+                    end: bytes + len
+                    end/value: null-byte
 
+                    strarr/item: as-c-string bytes
+                    len-ptr/value: len
                     printf [", str:%s^/" strarr/item]
 
                     _ctx/json: p
-
                     return PARSE_OK
                 ]
                 #"\" [
@@ -387,19 +390,14 @@ json: context [
         /local
             ret     [integer!]
             size    [integer!]
-            members [json-member!]
-            key     [str-array!]
-            lenptr  [int-ptr!]
+            key-ptr [str-array!]
+            len-ptr [int-ptr!]
             target  [byte-ptr!]
             m       [json-member!]
-            e       [json-value!]
             i       [integer!]
     ][
-        ret: 0
-        size: 0
         expect #"{"
         parse-whitespace                            ;- 第一个元素前可能有空白符
-
         if _ctx/json/1 = #"}" [
             _ctx/json: _ctx/json + 1
             v/type: JSON_OBJECT
@@ -408,31 +406,30 @@ json: context [
             return PARSE_OK
         ]
 
-        members: declare json-member!
-        m: members
+        ret: 0
+        size: 0
+        m: declare json-member!
+        m/val: declare json-value!
+        key-ptr: declare str-array!
+        len-ptr: declare int-ptr! 0
 
         forever [
-            m: members + size
-            m/val: declare json-value!
-            init-value m/val
-            
-            ;- 过程：解析 key -> 逗号/空白 -> value
-
-            if _ctx/json/1 <> #"^"" [               ;- 如果不是 " 开头说明 key 不合法
+            if _ctx/json/1 <> #"^"" [               ;- 不是 " 开头说明 key 不合法
                 ret: PARSE_MISS_KEY
                 break
             ]
-
-            ;- 解析得到 key
-            key: declare str-array!
-            lenptr: declare int-ptr! 0
-            ret: parse-string-raw key lenptr
+ 
+            ;- 解析 key
+            ret: parse-string-raw key-ptr len-ptr
             if ret <> PARSE_OK [
                 ret: PARSE_MISS_KEY
                 break
             ]
+            target: allocate (len-ptr/value + 1)
+            copy-memory target (as byte-ptr! key-ptr/item) (len-ptr/value + 1)
+            m/key: as-c-string target               ;- 把 key 复制到 member!
+            m/klen: len-ptr/value
 
-            ;- 去掉空白
             parse-whitespace
             if _ctx/json/1 <> #":" [
                 ret: PARSE_MISS_COLON
@@ -442,32 +439,35 @@ json: context [
             parse-whitespace
 
             ;- 解析 value
-            e: declare json-value!
-            init-value e
-            ret: parse-value e
+            init-value m/val
+            ret: parse-value m/val
             if ret <> PARSE_OK [break]
 
             ;- 构造一个 json-member!
-            m/key: as-c-string key
-            m/klen: lenptr/value
-            m/val: e
-            size: size + 1
+            printf ["    m/key: %s^/" m/key]
+            printf ["    value m/val/type: %d^/" m/val/type]
+            printf ["    value m/val//num: %.1f^/" m/val/num]
+            printf ["    value m/val/str: %s^/" m/val/str]
+            printf ["    value m/val/arr: %d^/" m/val/arr]
 
+            ;- member! 复制到栈中
             target: context-push size? json-member!
             copy-memory target (as byte-ptr! m) (size? json-member!)
-            m/key: null     ;- 避免重复释放
+            size: size + 1
+            m/key: null                             ;- 避免重复释放
 
             parse-whitespace                        ;- 每个元素结束后可能有空白符
-            printf ["obj next char: %c^/" _ctx/json/1]
+            printf ["parse-object next char: %c^/" _ctx/json/1]
             switch _ctx/json/1 [
                 #"," [
                     _ctx/json: _ctx/json + 1        ;- 跳过逗号
+                    parse-whitespace
                 ]
                 #"}" [
                     _ctx/json: _ctx/json + 1        ;- 对象结束，从栈中复制到 json-value!
                     v/type: JSON_OBJECT
                     v/len: size
-
+                    ;- 从栈中弹出
                     size: size * size? json-member!
                     target: allocate size
                     copy-memory target (context-pop size) size
