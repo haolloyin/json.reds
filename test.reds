@@ -227,7 +227,7 @@ test-access-number: func [/local v][
 test-parse-string: func [/local v][
     TEST_STRING("ab123" {"ab123"})
     print-line "-------"
-    TEST_STRING("" {""})
+    TEST_STRING(""      {""})
     print-line "-------"
     TEST_STRING("hello" {"hello"})
     print-line "-------"
@@ -347,6 +347,8 @@ test-parse-object1: func [/local v v1 v2][
     v1: declare json-value!
     v2: declare json-value!
     json/init-value v
+    json/init-value v1
+    json/init-value v2
 
     expect-eq-int PARSE_OK json/parse v "{ ^"a^" : [1 , ^"value1^"] , ^"b^": ^"bbb^" , ^"c^": 123}"
     expect-eq-int JSON_OBJECT json/get-type v
@@ -354,15 +356,16 @@ test-parse-object1: func [/local v v1 v2][
     expect-eq-string "a" (json/get-object-key v 0) (json/get-object-key-length v 0)
     v1: json/get-object-value v 0
     expect-eq-int JSON_ARRAY json/get-type v1
-    expect-eq-int 2 json/get-array-size v1
-    v2: json/get-array-element v1 0
-    expect-eq-int JSON_NUMBER json/get-type v2
-    expect-eq-float 1.0 json/get-number v2
-    v2: json/get-array-element v1 1
-    expect-eq-int JSON_STRING json/get-type v2
-    expect-eq-string "value1" (json/get-string v2) (json/get-string-length v2)
+    ;expect-eq-int 2 json/get-array-size v1
+    ;v2: json/get-array-element v1 0
+    ;expect-eq-int JSON_NUMBER json/get-type v2
+    ;expect-eq-float 1.0 json/get-number v2
+    ;v2: json/get-array-element v1 1
+    ;expect-eq-int JSON_STRING json/get-type v2
+    ;expect-eq-string "value1" (json/get-string v2) (json/get-string-length v2)
 
-    ;json/free-value v
+    printf ["^/^/test v: %d^/" v]
+    json/free-value v
     ;json/free-value v1
     ;json/free-value v2
 ]
@@ -399,25 +402,25 @@ test-parse-object2: func [/local v v1][
 test-parse: does [
     ;test-parse-number-too-big      ;- no working
 
-    ;test-parse-null
-    ;test-parse-true
-    ;test-parse-false
-    ;test-parse-expect-value
-    ;test-parse-invalid-value
-    ;test-parse-root-not-singular
-    ;test-parse-number
-    ;test-parse-string
-    ;test-parse-array
+    test-parse-null
+    test-parse-true
+    test-parse-false
+    test-parse-expect-value
+    test-parse-invalid-value
+    test-parse-root-not-singular
+    test-parse-number
+    test-parse-string
+    test-parse-array
 
-    ;test-access-string
-    ;test-access-boolean
-    ;test-access-number
+    test-access-string
+    test-access-boolean
+    test-access-number
 
-    ;test-parse-miss-key
-    ;test-parse-miss-colon
-    ;test-parse-miss-comma-or-curly-bracket
-    ;test-parse-object
-    test-parse-object1
+    test-parse-miss-key
+    test-parse-miss-colon
+    test-parse-miss-comma-or-curly-bracket
+    test-parse-object
+    ;test-parse-object1
     ;test-parse-object2
 ]
 

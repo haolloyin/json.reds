@@ -58,9 +58,8 @@ json: context [
         _ctx/json: c
     ]
 
-    expect: func [char [byte!] /local c][
-        c: _ctx/json
-        assert c/1 = char
+    expect: func [char [byte!]][
+        assert _ctx/json/1 = char
         _ctx/json: _ctx/json + 1
     ]
 
@@ -220,23 +219,39 @@ json: context [
         ret: _ctx/stack + _ctx/top        ;- 返回缩减后的栈顶指针：栈基地址 + 偏移
 
         ;- Note: 如果 json 是空字符串，这里返回的是地址 0，小心
-        ;printf ["context-pop ret: %d.^/" ret]
+        printf ["context-pop ret: %d^/" ret]
         ret
     ]
 
     ;------------- parsing functions ----------------
+    make-string: func [
+        bytes   [byte-ptr!]
+        len     [integer!]
+        return: [c-string!]
+        /local  target end
+    ][
+        target: allocate len + 1
+        copy-memory target bytes len
+        end: target + len
+        end/value: null-byte        ;- 补上终结符
+        as-c-string target
+    ]
+
+    bytes-ptr!: alias struct! [
+        bytes [byte-ptr!]
+    ]
 
     parse-string-raw: func [
-        "解析 JSON 字符串，把结果写入 str 和 len"
-        strarr  [str-array!]
-        len-ptr [int-ptr!]
-        return: [integer!]
-        /local  head len p ch top ch-ptr ret bytes end
+        "解析 JSON 字符串，把结果写入 bytes 指针和 len 指针"
+        bytes-ptr   [bytes-ptr!]
+        len-ptr     [int-ptr!]
+        return:     [integer!]
+        /local      head len p ch top ch-ptr ret end
     ][
         head: _ctx/top           ;- 记录字符串起始点，即开头的 "
 
         printf ["parse-string-raw json: %s^/" _ctx/json]
-        ;printf ["parse-string-raw strarr: %d^/" strarr]
+        printf ["parse-string-raw bytes-ptr: %d -> %d, bytes: %s^/" bytes-ptr bytes-ptr/bytes/value bytes-ptr/bytes]
         expect #"^""        ;- 字符串必定以双引号开头，跳到下一个字符
 
         p: _ctx/json
@@ -247,17 +262,13 @@ json: context [
             switch ch [
                 #"^"" [         ;- 字符串结束符
                     len: _ctx/top - head
-                    printf ["parse-string-raw finish with len: %d" len]
-                    ;- 从栈中取出所有字符来构造成 c-string!
-                    bytes: context-pop len
-                    end: bytes + len
-                    end/value: null-byte
+                    printf ["parse-string-raw finish with len: %d^/" len]
 
-                    strarr/item: as-c-string bytes
+                    ;- 取出栈中的字节流，空字符串可能会返回 0
+                    bytes-ptr/bytes: context-pop len
                     len-ptr/value: len
-                    printf [", str: %s^/" strarr/item]
-
                     _ctx/json: p
+
                     return PARSE_OK
                 ]
                 #"\" [
@@ -296,16 +307,17 @@ json: context [
         v       [json-value!]
         return: [integer!]
         /local
-            strarr  [str-array!]
-            len     [int-ptr!]
-            ret     [integer!]
+            bytes-ptr   [bytes-ptr!]
+            len-ptr     [int-ptr!]
+            ret         [integer!]
     ][
-        strarr: declare str-array!
-        len: declare int-ptr! 0
+        bytes-ptr: declare bytes-ptr!
+        bytes-ptr/bytes: declare byte-ptr!
+        len-ptr: declare int-ptr!
 
-        ret: parse-string-raw strarr len
+        ret: parse-string-raw bytes-ptr len-ptr
         if ret = PARSE_OK [
-            set-string v (as byte-ptr! strarr/item) len/value
+            set-string v bytes-ptr/bytes len-ptr/value
         ]
 
         ret
@@ -390,7 +402,7 @@ json: context [
         /local
             ret     [integer!]
             size    [integer!]
-            key-ptr [str-array!]
+            key-ptr [bytes-ptr!]
             len-ptr [int-ptr!]
             target  [byte-ptr!]
             m       [json-member!]
@@ -410,8 +422,10 @@ json: context [
         size: 0
         m: declare json-member!
         m/val: declare json-value!
-        key-ptr: declare str-array!
-        len-ptr: declare int-ptr! 0
+        key-ptr: declare bytes-ptr!
+        key-ptr/bytes: declare byte-ptr!
+
+        len-ptr: declare int-ptr!
 
         forever [
             if _ctx/json/1 <> #"^"" [               ;- 不是 " 开头说明 key 不合法
@@ -425,9 +439,7 @@ json: context [
                 ret: PARSE_MISS_KEY
                 break
             ]
-            target: allocate (len-ptr/value + 1)
-            copy-memory target (as byte-ptr! key-ptr/item) (len-ptr/value + 1)
-            m/key: as-c-string target               ;- 把 key 复制到 member!
+            m/key: make-string key-ptr/bytes len-ptr/value
             m/klen: len-ptr/value
 
             parse-whitespace
@@ -440,20 +452,21 @@ json: context [
 
             ;- 解析 value
             printf ["    m: %d, m/val: %d^/" m m/val]
-            m/val: as json-value! allocate size? json-value!
             init-value m/val                        ;- 必须，否则在 free-value 时会被释放掉
+            ;m/val: as json-value! allocate size? json-value!
             ret: parse-value m/val
             if ret <> PARSE_OK [break]
 
             ;- 构造一个 json-member!
-            printf ["    m/key: %s^/" m/key]
-            printf ["    m: %d, m/val: %d^/" m m/val]
+            printf ["    m/key: %s -> %d^/" m/key m/key]
+            printf ["    m: %d^/" m]
+            printf ["    m/val: %d^/" m/val]
             printf ["    m/val/type: %d^/" m/val/type]
-            printf ["    m/val//num: %.1f^/" m/val/num]
-            printf ["    m/val/str: %s^/" m/val/str]
-            printf ["    m/val/arr: %d^/" m/val/arr]
+            printf ["    m/val/num: %.1g^/" m/val/num]
+            ;printf ["    m/val/str: %s^/" m/val/str]
+            ;printf ["    m/val/arr: %d^/" m/val/arr]
 
-            ;- member! 复制到栈中
+            ;- 把 json-member! 复制到栈中
             target: context-push size? json-member!
             copy-memory target (as byte-ptr! m) (size? json-member!)
             size: size + 1
@@ -568,26 +581,34 @@ json: context [
 
     free-value: func [v [json-value!] /local i e m][
         assert v <> null
+        printf ["free type: %d^/" v/type]
         switch v/type [
-            JSON_STRING [free as byte-ptr! v/str]
+            JSON_STRING [
+                printf ["free-STRING v: %d, v/str: %d^/" v v/str]
+                free as byte-ptr! v/str
+            ]
             JSON_ARRAY  [
+                printf ["free-ARRAY v: %d, v/arr: %d^/" v v/arr]
                 ;- 递归释放数组中每一个元素
-                i: 1
+                i: 0
                 while [i < v/len][
                     e: v/arr + i
-                    free-value e
+                    free-value e            ;- value! 可能有 str 类型的元素，让它递归
                     i: i + 1
                 ]
-                free as byte-ptr! v/arr
+                free as byte-ptr! v/arr     ;- arr 本身也是 malloc 得到的
             ]
             JSON_OBJECT [
                 ;- 递归释放对象中每一个元素
-                i: 1
+                i: 0
+                printf ["free-OBJECT v: %d, v/objptr: %d^/" v v/objptr]
                 while [i < v/len][
                     m: as json-member! (v/objptr + i)
-                    free-value m/val
+                    free as byte-ptr! m/key
+                    free-value m/val        ;- value 一定不为空
                     i: i + 1
                 ]
+                free as byte-ptr! v/objptr
             ]
             default     []
         ]
@@ -626,26 +647,18 @@ json: context [
 
     set-string: func [
         v       [json-value!]
-        str     [byte-ptr!]
+        bytes   [byte-ptr!]
         len     [integer!]
         /local  target p
     ][
         assert all [
             v <> null
-            any [str <> null len = 0]]      ;- 非空指针，或空字符串
+            any [bytes <> null len = 0]]      ;- 非空指针，或空字符串
 
-        ;- 确保传入的 json-value! 中的 str/arr 被释放掉
+        ;- 确保传入的 json-value! 中原有的 str/arr 被释放掉
         free-value v
 
-        target: allocate len + 1            ;- 包含字符串终结符
-
-        ;- Note: pop 返回 byte-ptr! 是因为在这里补上末尾的 null 形成 c-string!
-        ;- 如果 pop 返回 c-string! 好像挺难搞，会遇到偶数字节时末尾有异常字符
-        copy-memory target str len
-
-        p: target + len
-        p/value: null-byte                  ;- 补上字符串终结符才能转成 c-string!
-        v/str: as-c-string target
+        v/str: make-string bytes len
         v/len: len
         v/type: JSON_STRING
     ]
