@@ -353,9 +353,7 @@ json: context [
             ;- 用解析得到的元素来填充栈空间，释放掉这个临时 json-value! 结构
             target: context-push size? json-value!
             copy-memory target (as byte-ptr! e) (size? json-value!)
-
             size: size + 1
-
             parse-whitespace                        ;- 每个元素结束后可能有空白符
 
             ;printf ["array next char: %c^/" _ctx/json/1]
@@ -407,6 +405,7 @@ json: context [
             target  [byte-ptr!]
             m       [json-member!]
             i       [integer!]
+            e
     ][
         expect #"{"
         parse-whitespace                            ;- 第一个元素前可能有空白符
@@ -424,7 +423,6 @@ json: context [
         m/val: declare json-value!
         key-ptr: declare bytes-ptr!
         key-ptr/bytes: declare byte-ptr!
-
         len-ptr: declare int-ptr!
 
         forever [
@@ -439,6 +437,7 @@ json: context [
                 ret: PARSE_MISS_KEY
                 break
             ]
+            ;- 分配内存装字符串，然后把新地址赋值给 key
             m/key: make-string key-ptr/bytes len-ptr/value
             m/klen: len-ptr/value
 
@@ -451,22 +450,16 @@ json: context [
             parse-whitespace
 
             ;- 解析 value
-            printf ["    m: %d, m/val: %d^/" m m/val]
-            init-value m/val                        ;- 必须，否则在 free-value 时会被释放掉
-            ;m/val: as json-value! allocate size? json-value!
-            ret: parse-value m/val
+            e: declare json-value!
+            e: as json-value! allocate size? json-value!
+            init-value e
+            ret: parse-value e
             if ret <> PARSE_OK [break]
+            m/val: e
 
-            ;- 构造一个 json-member!
-            printf ["    m/key: %s -> %d^/" m/key m/key]
-            printf ["    m: %d^/" m]
             printf ["    m/val: %d^/" m/val]
-            printf ["    m/val/type: %d^/" m/val/type]
-            printf ["    m/val/num: %.1g^/" m/val/num]
-            ;printf ["    m/val/str: %s^/" m/val/str]
-            ;printf ["    m/val/arr: %d^/" m/val/arr]
 
-            ;- 把 json-member! 复制到栈中
+            ;- 从栈中弹出空间构造成 json-member!
             target: context-push size? json-member!
             copy-memory target (as byte-ptr! m) (size? json-member!)
             size: size + 1
@@ -581,32 +574,32 @@ json: context [
 
     free-value: func [v [json-value!] /local i e m][
         assert v <> null
-        printf ["free type: %d^/" v/type]
+        printf ["free v: %d, type: %d^/" v v/type]
         switch v/type [
             JSON_STRING [
-                printf ["free-STRING v: %d, v/str: %d^/" v v/str]
+                printf ["    free-STRING v: %d, v/str: %d -> %s^/" v v/str v/str]
                 free as byte-ptr! v/str
             ]
             JSON_ARRAY  [
-                printf ["free-ARRAY v: %d, v/arr: %d^/" v v/arr]
-                ;- 递归释放数组中每一个元素
+                printf ["    free-ARRAY v: %d, v/arr: %d^/" v v/arr]
                 i: 0
                 while [i < v/len][
                     e: v/arr + i
-                    free-value e            ;- value! 可能有 str 类型的元素，让它递归
                     i: i + 1
+                    free-value e            ;- value! 可能有 str 类型的元素，让它递归
                 ]
                 free as byte-ptr! v/arr     ;- arr 本身也是 malloc 得到的
             ]
             JSON_OBJECT [
-                ;- 递归释放对象中每一个元素
+                printf ["    free-OBJECT v: %d, v/objptr: %d^/" v v/objptr]
                 i: 0
-                printf ["free-OBJECT v: %d, v/objptr: %d^/" v v/objptr]
                 while [i < v/len][
-                    m: as json-member! (v/objptr + i)
-                    free as byte-ptr! m/key
-                    free-value m/val        ;- value 一定不为空
+                    m: (as json-member! v/objptr) + i
                     i: i + 1
+                    printf ["begin free %d member: %d, m/val: %d, m/val/type: %d^/" i m m/val m/val/type]
+                    free-value m/val        ;- value 一定不为空
+                    free as byte-ptr! m/val ;- val 也是 malloc 出来的
+                    free as byte-ptr! m/key
                 ]
                 free as byte-ptr! v/objptr
             ]

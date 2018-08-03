@@ -355,19 +355,30 @@ test-parse-object1: func [/local v v1 v2][
     expect-eq-int 3 json/get-object-size v
     expect-eq-string "a" (json/get-object-key v 0) (json/get-object-key-length v 0)
     v1: json/get-object-value v 0
+        v2: json/get-object-value v 1
+        printf ["v1: %d, v2: %d^/" v1 v2]       ;- 查 member! 的 json-value! 引用有 bug 时用的
+        assert v1 <> v2
     expect-eq-int JSON_ARRAY json/get-type v1
-    ;expect-eq-int 2 json/get-array-size v1
-    ;v2: json/get-array-element v1 0
-    ;expect-eq-int JSON_NUMBER json/get-type v2
-    ;expect-eq-float 1.0 json/get-number v2
-    ;v2: json/get-array-element v1 1
-    ;expect-eq-int JSON_STRING json/get-type v2
-    ;expect-eq-string "value1" (json/get-string v2) (json/get-string-length v2)
+    expect-eq-int 2 json/get-array-size v1
+    v2: json/get-array-element v1 0
+    expect-eq-int JSON_NUMBER json/get-type v2
+    expect-eq-float 1.0 json/get-number v2
+    v2: json/get-array-element v1 1
+    expect-eq-int JSON_STRING json/get-type v2
+    expect-eq-string "value1" (json/get-string v2) (json/get-string-length v2)
+
+    v1: json/get-object-value v 1
+    expect-eq-int JSON_STRING json/get-type v1
+    expect-eq-string "bbb" (json/get-string v1) (json/get-string-length v1)
+
+    v1: json/get-object-value v 2
+    expect-eq-int JSON_NUMBER json/get-type v1
+    expect-eq-float 123.0 json/get-number v1
 
     printf ["^/^/test v: %d^/" v]
     json/free-value v
-    ;json/free-value v1
-    ;json/free-value v2
+    json/free-value v1
+    json/free-value v2
 ]
 
 test-parse-object2: func [/local v v1][
@@ -401,7 +412,6 @@ test-parse-object2: func [/local v v1][
 
 test-parse: does [
     ;test-parse-number-too-big      ;- no working
-
     test-parse-null
     test-parse-true
     test-parse-false
@@ -420,7 +430,7 @@ test-parse: does [
     test-parse-miss-colon
     test-parse-miss-comma-or-curly-bracket
     test-parse-object
-    ;test-parse-object1
+    test-parse-object1
     ;test-parse-object2
 ]
 
