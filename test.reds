@@ -24,7 +24,7 @@ test-index: 0
     ]
 ]
 
-expect-eq-int: func [
+expect-eq-int?: func [
     expect  [integer!]
     actual  [integer!]
     /local equality s
@@ -33,7 +33,7 @@ expect-eq-int: func [
     EXPECT_EQ_BASE(equality expect actual "%d")
 ]
 
-expect-eq-float: func [
+expect-eq-float?: func [
     expect  [float!]
     actual  [float!]
     /local equality s
@@ -42,7 +42,7 @@ expect-eq-float: func [
     EXPECT_EQ_BASE(equality expect actual "%.17g")
 ]
 
-expect-eq-string: func [
+expect-eq-string?: func [
     expect  [c-string!]
     actual  [c-string!]
     len     [integer!]
@@ -58,7 +58,7 @@ expect-eq-string: func [
     EXPECT_EQ_BASE(equality expect actual "%s")
 ]
 
-expect-true: func [
+expect-true?: func [
     actual  [logic!]
     /local  equality s
 ][
@@ -66,7 +66,7 @@ expect-true: func [
     EXPECT_EQ_BASE(equality "true" "false" "%s")
 ]
 
-expect-false: func [
+expect-false?: func [
     actual  [logic!]
     /local  equality s
 ][
@@ -77,29 +77,29 @@ expect-false: func [
 test-parse-null: func [/local v][
     v: declare json-value!
     v/type: JSON_NULL
-    expect-eq-int PARSE_OK json/parse v "null"
-    expect-eq-int JSON_NULL json/get-type v
+    expect-eq-int? PARSE_OK json/parse v "null"
+    expect-eq-int? JSON_NULL json/get-type v
 ]
 
 test-parse-true: func [/local v][
     v: declare json-value!
     v/type: JSON_TRUE
-    expect-eq-int PARSE_OK json/parse v "true"
-    expect-eq-int JSON_TRUE json/get-type v
+    expect-eq-int? PARSE_OK json/parse v "true"
+    expect-eq-int? JSON_TRUE json/get-type v
 ]
 
 test-parse-false: func [/local v][
     v: declare json-value!
     v/type: JSON_FALSE
-    expect-eq-int PARSE_OK json/parse v "false"
-    expect-eq-int JSON_FALSE json/get-type v
+    expect-eq-int? PARSE_OK json/parse v "false"
+    expect-eq-int? JSON_FALSE json/get-type v
 ]
 
 #define TEST_ERROR(expect str) [
     v: declare json-value!  ;- 会多次调用，测试期间无所谓
     v/type: JSON_NULL
-    expect-eq-int expect json/parse v str
-    expect-eq-int JSON_NULL json/get-type v
+    expect-eq-int? expect json/parse v str
+    expect-eq-int? JSON_NULL json/get-type v
 ]
 
 test-parse-expect-value: func [/local v][
@@ -133,9 +133,9 @@ test-parse-root-not-singular: func [/local v][
 
 #define TEST_NUMBER(expect str) [
     v: declare json-value!  ;- 会重复调用，测试期间无所谓
-    expect-eq-int PARSE_OK json/parse v str
-    expect-eq-int JSON_NUMBER json/get-type v
-    expect-eq-float expect json/get-number v
+    expect-eq-int? PARSE_OK json/parse v str
+    expect-eq-int? JSON_NUMBER json/get-type v
+    expect-eq-float? expect json/get-number v
 ]
 
 test-parse-number: func [/local v][
@@ -181,10 +181,10 @@ test-access-string: func [/local v][
     json/init-value v
 
     json/set-string v as byte-ptr! "" 0
-    expect-eq-string "" json/get-string v json/get-string-length v
+    expect-eq-string? "" json/get-string v json/get-string-length v
 
     json/set-string v as byte-ptr! "hello" 5
-    expect-eq-string "hello" json/get-string v json/get-string-length v
+    expect-eq-string? "hello" json/get-string v json/get-string-length v
 
     json/free-value v
 ]
@@ -195,9 +195,9 @@ test-access-boolean: func [/local v][
 
     json/set-string v as byte-ptr! "a" 1
     json/set-boolean v true
-    expect-true json/get-boolean v
+    expect-true? json/get-boolean v
     json/set-boolean v false
-    expect-false json/get-boolean v
+    expect-false? json/get-boolean v
 
     json/free-value v
 ]
@@ -208,7 +208,7 @@ test-access-number: func [/local v][
 
     json/set-string v as byte-ptr! "a" 1
     json/set-number v 3.14
-    expect-eq-float 3.14 json/get-number v
+    expect-eq-float? 3.14 json/get-number v
 
     json/free-value v
 ]
@@ -217,9 +217,9 @@ test-access-number: func [/local v][
     v: declare json-value!
     json/init-value v
 
-    expect-eq-int PARSE_OK json/parse v str
-    expect-eq-int JSON_STRING json/get-type v
-    expect-eq-string expect json/get-string v json/get-string-length v
+    expect-eq-int? PARSE_OK json/parse v str
+    expect-eq-int? JSON_STRING json/get-type v
+    expect-eq-string? expect json/get-string v json/get-string-length v
 
     json/free-value v
 ]
@@ -243,40 +243,40 @@ test-parse-array: func [/local v e i j v1 v2][
     v: declare json-value!
     json/init-value v
 
-    expect-eq-int PARSE_OK json/parse v "[ ]"
-    expect-eq-int JSON_ARRAY json/get-type v
-    expect-eq-int 0 json/get-array-size v
+    expect-eq-int? PARSE_OK json/parse v "[ ]"
+    expect-eq-int? JSON_ARRAY json/get-type v
+    expect-eq-int? 0 json/get-array-size v
 
-    expect-eq-int PARSE_OK json/parse v " [ 1 , 2 ] "
-    expect-eq-int JSON_ARRAY json/get-type v
-    expect-eq-int 2 json/get-array-size v
-
-    e: json/get-array-element v 0
-    expect-eq-float 1.0 e/num
-
-    expect-eq-int PARSE_OK json/parse v {[ null , false , true , 123 , "abc" ]}
-    expect-eq-int JSON_ARRAY json/get-type v
-    expect-eq-int 5 json/get-array-size v
+    expect-eq-int? PARSE_OK json/parse v " [ 1 , 2 ] "
+    expect-eq-int? JSON_ARRAY json/get-type v
+    expect-eq-int? 2 json/get-array-size v
 
     e: json/get-array-element v 0
-    expect-eq-int JSON_NULL json/get-type e
+    expect-eq-float? 1.0 e/num
+
+    expect-eq-int? PARSE_OK json/parse v {[ null , false , true , 123 , "abc" ]}
+    expect-eq-int? JSON_ARRAY json/get-type v
+    expect-eq-int? 5 json/get-array-size v
+
+    e: json/get-array-element v 0
+    expect-eq-int? JSON_NULL json/get-type e
     e: json/get-array-element v 1
-    expect-eq-int JSON_FALSE json/get-type e
+    expect-eq-int? JSON_FALSE json/get-type e
     e: json/get-array-element v 2
-    expect-eq-int JSON_TRUE json/get-type e
+    expect-eq-int? JSON_TRUE json/get-type e
     e: json/get-array-element v 3
-    expect-eq-int JSON_NUMBER json/get-type e
+    expect-eq-int? JSON_NUMBER json/get-type e
     e: json/get-array-element v 4
-    expect-eq-int JSON_STRING json/get-type e
+    expect-eq-int? JSON_STRING json/get-type e
 
     e: json/get-array-element v 3
-    expect-eq-float 123.0 json/get-number e
+    expect-eq-float? 123.0 json/get-number e
     e: json/get-array-element v 4
-    expect-eq-string "abc" json/get-string e json/get-string-length e
+    expect-eq-string? "abc" json/get-string e json/get-string-length e
 
-    expect-eq-int PARSE_OK json/parse v {[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]}
-    expect-eq-int JSON_ARRAY json/get-type v
-    expect-eq-int 4 json/get-array-size v
+    expect-eq-int? PARSE_OK json/parse v {[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]}
+    expect-eq-int? JSON_ARRAY json/get-type v
+    expect-eq-int? 4 json/get-array-size v
 
     i: json/get-array-size v
     while [i > 0] [
@@ -284,8 +284,8 @@ test-parse-array: func [/local v e i j v1 v2][
         json/init-value v1
 
         v1: json/get-array-element v (4 - i)
-        expect-eq-int JSON_ARRAY json/get-type v1
-        expect-eq-int (4 - i) json/get-array-size v1
+        expect-eq-int? JSON_ARRAY json/get-type v1
+        expect-eq-int? (4 - i) json/get-array-size v1
 
         j: 0
         while [j < (4 - i)] [
@@ -294,8 +294,8 @@ test-parse-array: func [/local v e i j v1 v2][
             json/init-value v2 
 
             v2: json/get-array-element v1 j
-            expect-eq-int JSON_NUMBER json/get-type v2
-            expect-eq-float as-float j json/get-number v2 j
+            expect-eq-int? JSON_NUMBER json/get-type v2
+            expect-eq-float? as-float j json/get-number v2 j
             j: j + 1
         ]
 
@@ -303,9 +303,9 @@ test-parse-array: func [/local v e i j v1 v2][
     ]
 
     e: json/get-array-element v 3
-    expect-eq-int JSON_ARRAY json/get-type e
+    expect-eq-int? JSON_ARRAY json/get-type e
     e: json/get-array-element e 1
-    expect-eq-float 1.0 e/num
+    expect-eq-float? 1.0 e/num
 
     json/free-value v
     json/free-value e
@@ -336,9 +336,9 @@ test-parse-miss-comma-or-curly-bracket: func [/local v][
 test-parse-object: func [/local v v1][
     v: declare json-value!
     json/init-value v
-    expect-eq-int PARSE_OK json/parse v " { } "
-    expect-eq-int JSON_OBJECT json/get-type v
-    expect-eq-int 0 json/get-object-size v
+    expect-eq-int? PARSE_OK json/parse v " { } "
+    expect-eq-int? JSON_OBJECT json/get-type v
+    expect-eq-int? 0 json/get-object-size v
     json/free-value v
 ]
 
@@ -350,32 +350,31 @@ test-parse-object1: func [/local v v1 v2][
     json/init-value v1
     json/init-value v2
 
-    expect-eq-int PARSE_OK json/parse v "{ ^"a^" : [1 , ^"value1^"] , ^"b^": ^"bbb^" , ^"c^": 123}"
-    expect-eq-int JSON_OBJECT json/get-type v
-    expect-eq-int 3 json/get-object-size v
-    expect-eq-string "a" (json/get-object-key v 0) (json/get-object-key-length v 0)
+    expect-eq-int? PARSE_OK json/parse v "{ ^"a^" : [1 , ^"value1^"] , ^"b^": ^"bbb^" , ^"c^": 123}"
+    expect-eq-int? JSON_OBJECT json/get-type v
+    expect-eq-int? 3 json/get-object-size v
+    expect-eq-string? "a" (json/get-object-key v 0) (json/get-object-key-length v 0)
     v1: json/get-object-value v 0
         v2: json/get-object-value v 1
         printf ["v1: %d, v2: %d^/" v1 v2]       ;- 查 member! 的 json-value! 引用有 bug 时用的
         assert v1 <> v2
-    expect-eq-int JSON_ARRAY json/get-type v1
-    expect-eq-int 2 json/get-array-size v1
+    expect-eq-int? JSON_ARRAY json/get-type v1
+    expect-eq-int? 2 json/get-array-size v1
     v2: json/get-array-element v1 0
-    expect-eq-int JSON_NUMBER json/get-type v2
-    expect-eq-float 1.0 json/get-number v2
+    expect-eq-int? JSON_NUMBER json/get-type v2
+    expect-eq-float? 1.0 json/get-number v2
     v2: json/get-array-element v1 1
-    expect-eq-int JSON_STRING json/get-type v2
-    expect-eq-string "value1" (json/get-string v2) (json/get-string-length v2)
+    expect-eq-int? JSON_STRING json/get-type v2
+    expect-eq-string? "value1" (json/get-string v2) (json/get-string-length v2)
 
     v1: json/get-object-value v 1
-    expect-eq-int JSON_STRING json/get-type v1
-    expect-eq-string "bbb" (json/get-string v1) (json/get-string-length v1)
+    expect-eq-int? JSON_STRING json/get-type v1
+    expect-eq-string? "bbb" (json/get-string v1) (json/get-string-length v1)
 
     v1: json/get-object-value v 2
-    expect-eq-int JSON_NUMBER json/get-type v1
-    expect-eq-float 123.0 json/get-number v1
+    expect-eq-int? JSON_NUMBER json/get-type v1
+    expect-eq-float? 123.0 json/get-number v1
 
-    printf ["^/^/test v: %d^/" v]
     json/free-value v
     json/free-value v1
     json/free-value v2
@@ -385,7 +384,7 @@ test-parse-object2: func [/local v v1][
     v: declare json-value!
     json/init-value v
 
-    expect-eq-int PARSE_OK json/parse v { { 
+    expect-eq-int? PARSE_OK json/parse v { { 
         "aa" : 111 , 
         "bb": "222" ,
         "n" : null ,
@@ -395,17 +394,17 @@ test-parse-object2: func [/local v v1][
         "a" : [ 1 , 2, "cc" ] ,
         "o" : { "k1": 11, "key2" : "abc" }
     } }
-    expect-eq-int JSON_OBJECT json/get-type v
-    expect-eq-int 8 json/get-object-size v
-    expect-eq-int 2 (json/get-object-key-length v 0)
-    expect-eq-string "aa" (json/get-object-key v 0) (json/get-object-key-length v 0)
-    expect-eq-string "bb" (json/get-object-key v 1) (json/get-object-key-length v 1)
-    expect-eq-string "n" (json/get-object-key v 2) (json/get-object-key-length v 2)
-    expect-eq-string "f" (json/get-object-key v 3) (json/get-object-key-length v 3)
-    expect-eq-string "t" (json/get-object-key v 4) (json/get-object-key-length v 4)
-    expect-eq-string "s" (json/get-object-key v 5) (json/get-object-key-length v 5)
-    expect-eq-string "a" (json/get-object-key v 6) (json/get-object-key-length v 6)
-    expect-eq-string "o" (json/get-object-key v 7) (json/get-object-key-length v 7)
+    expect-eq-int? JSON_OBJECT json/get-type v
+    expect-eq-int? 8 json/get-object-size v
+    expect-eq-int? 2 (json/get-object-key-length v 0)
+    expect-eq-string? "aa" (json/get-object-key v 0) (json/get-object-key-length v 0)
+    expect-eq-string? "bb" (json/get-object-key v 1) (json/get-object-key-length v 1)
+    expect-eq-string? "n" (json/get-object-key v 2) (json/get-object-key-length v 2)
+    expect-eq-string? "f" (json/get-object-key v 3) (json/get-object-key-length v 3)
+    expect-eq-string? "t" (json/get-object-key v 4) (json/get-object-key-length v 4)
+    expect-eq-string? "s" (json/get-object-key v 5) (json/get-object-key-length v 5)
+    expect-eq-string? "a" (json/get-object-key v 6) (json/get-object-key-length v 6)
+    expect-eq-string? "o" (json/get-object-key v 7) (json/get-object-key-length v 7)
 
     ;json/free-value v
 ]
