@@ -566,7 +566,6 @@ json: context [
                     m: (as json-member! v/objptr) + i
                     i: i + 1
                     free-value m/val        ;- value 一定不为空
-                    free as byte-ptr! m/val ;- val 也是 malloc 出来的
                     free as byte-ptr! m/key
                 ]
                 free as byte-ptr! v/objptr
