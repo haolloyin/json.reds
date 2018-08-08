@@ -2,6 +2,8 @@
 main
 test
 sample*
+*.c
+*.h
 
 .DS_Store
 *.exe

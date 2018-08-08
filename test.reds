@@ -385,28 +385,39 @@ test-parse-object2: func [/local v v1][
     json/init-value v
 
     expect-eq-int? PARSE_OK json/parse v { { 
-        "aa" : 111 , 
-        "bb": "222" ,
-        "n" : null ,
-        "f" : false,
-        "t" : true ,
-        "s" : "i am string" ,
-        "a" : [ 1 , 2, "cc" ] ,
-        "o" : { "k1": 11, "key2" : "abc" }
+        ^"n^" : null ,
+        ^"f^" : false,
+        ^"t^" : true ,
+        ^"i^" : 1234 ,
+        ^"s^" : ^"i am string^" ,
+        ^"a^" : [ 1 , 2, ^"cc^" ] ,
+        ^"o^" : { ^"k1^": 11, ^"key22^" : ^"abc^" }
     } }
     expect-eq-int? JSON_OBJECT json/get-type v
-    expect-eq-int? 8 json/get-object-size v
-    expect-eq-int? 2 (json/get-object-key-length v 0)
-    expect-eq-string? "aa" (json/get-object-key v 0) (json/get-object-key-length v 0)
-    expect-eq-string? "bb" (json/get-object-key v 1) (json/get-object-key-length v 1)
-    expect-eq-string? "n" (json/get-object-key v 2) (json/get-object-key-length v 2)
-    expect-eq-string? "f" (json/get-object-key v 3) (json/get-object-key-length v 3)
-    expect-eq-string? "t" (json/get-object-key v 4) (json/get-object-key-length v 4)
-    expect-eq-string? "s" (json/get-object-key v 5) (json/get-object-key-length v 5)
-    expect-eq-string? "a" (json/get-object-key v 6) (json/get-object-key-length v 6)
-    expect-eq-string? "o" (json/get-object-key v 7) (json/get-object-key-length v 7)
+    expect-eq-int? 7 json/get-object-size v
 
-    ;json/free-value v
+    expect-eq-string? "n" (json/get-object-key v 0) (json/get-object-key-length v 0)
+    expect-eq-int? JSON_NULL json/get-type (json/get-object-value v 0)
+
+    expect-eq-string? "f" (json/get-object-key v 1) (json/get-object-key-length v 1)
+    expect-eq-int? JSON_FALSE json/get-type (json/get-object-value v 1)
+
+    expect-eq-string? "t" (json/get-object-key v 2) (json/get-object-key-length v 2)
+    expect-eq-int? JSON_TRUE json/get-type (json/get-object-value v 2)
+
+    expect-eq-string? "i" (json/get-object-key v 3) (json/get-object-key-length v 3)
+    expect-eq-int? JSON_NUMBER json/get-type (json/get-object-value v 3)
+
+    expect-eq-string? "s" (json/get-object-key v 4) (json/get-object-key-length v 4)
+    expect-eq-int? JSON_STRING json/get-type (json/get-object-value v 4)
+
+    expect-eq-string? "a" (json/get-object-key v 5) (json/get-object-key-length v 5)
+    expect-eq-int? JSON_ARRAY json/get-type (json/get-object-value v 5)
+
+    expect-eq-string? "o" (json/get-object-key v 6) (json/get-object-key-length v 6)
+    expect-eq-int? JSON_OBJECT json/get-type (json/get-object-value v 6)
+
+    json/free-value v
 ]
 
 test-parse: does [
@@ -430,7 +441,7 @@ test-parse: does [
     test-parse-miss-comma-or-curly-bracket
     test-parse-object
     test-parse-object1
-    ;test-parse-object2
+    test-parse-object2
 ]
 
 main: does [

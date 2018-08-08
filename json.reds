@@ -31,7 +31,7 @@ json-value!: alias struct! [    ;- 用于承载解析后的结果
     num     [float!]            ;- 数值
     str     [c-string!]         ;- 字符串
     arr     [json-value!]       ;- 指向 json-value! 的数组，嵌套了自身类型的指针
-    objptr  [int-ptr!]          ;- 指向 json-member! 即 JSON 对象的数组的地址
+    objptr  [byte-ptr!]         ;- 指向 json-member! 即 JSON 对象的数组的地址
     len     [integer!]          ;- 字符串长度 or 数组元素个数
 ]
 
@@ -257,7 +257,7 @@ json: context [
             switch ch [
                 #"^"" [         ;- 字符串结束符
                     len: _ctx/top - head
-                    printf ["parse-string-raw finish with len: %d^/" len]
+                    ;printf ["parse-string-raw finish with len: %d^/" len]
                     ;- 取出栈中的字节流，空字符串可能会返回 0
                     bytes-ptr/bytes: context-pop len
                     len-ptr/value: len
@@ -407,10 +407,14 @@ json: context [
             v/objptr: null                          ;- 空对象
             return PARSE_OK
         ]
-
+        print-line ["    --- start parsing object ---"]
         ret: 0
         size: 0
-        m: declare json-member!
+            ;- 似乎是静态分配，调用多次粗口都是同一个地址，不行，递归会导致覆盖
+        ;m: declare json-member!
+            ;- 栈空间，后面要 free，应该配合 malloc 才行
+        ;m: as json-member! system/stack/allocate size? json-member!
+        m: as json-member! allocate size? json-member!             ;- 堆空间
         len-ptr: declare int-ptr!
         key-ptr: declare bytes-ptr!
         key-ptr/bytes: declare byte-ptr!
@@ -422,7 +426,7 @@ json: context [
             ]
  
             ;- 解析 key
-            ret: parse-string-raw key-ptr len-ptr
+            ret: parse-string-raw key-ptr len-ptr   ;- 为了返回多个值，用两个指针
             if ret <> PARSE_OK [
                 ret: PARSE_MISS_KEY
                 break
@@ -442,8 +446,10 @@ json: context [
             ;- 解析 value
             m/val: declare json-value!
             init-value m/val
+            printf ["...parse-object starts m: %d, m/key: %d, m/klen: %d, m/val: %d, v: %d, v/objptr: %d, m/key: %s^/" m m/key m/klen m/val v v/objptr m/key]
             ret: parse-value m/val
             if ret <> PARSE_OK [break]
+            printf ["...parse-object finish m: %d, m/key: %d, m/klen: %d, m/val: %d, v: %d, v/objptr: %d^/" m m/key m/klen m/val v v/objptr ]
 
             ;- 从栈中弹出空间构造成 json-member!
             target: context-push size? json-member!
@@ -461,11 +467,9 @@ json: context [
                     _ctx/json: _ctx/json + 1        ;- 对象结束，从栈中复制到 json-value!
                     v/type: JSON_OBJECT
                     v/len: size
-                    size: size * size? json-member! ;- 从栈中弹出
-                    target: allocate size
-                    copy-memory target (context-pop size) size
-
-                    v/objptr: as int-ptr! target    ;- 这里其实是 json-member! 数组
+                    size: size * size? json-member!
+                    v/objptr: allocate size
+                    copy-memory v/objptr (context-pop size) size    ;- 从栈中弹出
 
                     return PARSE_OK
                 ]
@@ -531,6 +535,7 @@ json: context [
             ]
         ]
  
+        printf ["^/--------- parse finish stack size: %d, top: %d^/" _ctx/size _ctx/top]
         assert _ctx/top = 0             ;- 清理空间
         free _ctx/stack
 
@@ -568,7 +573,7 @@ json: context [
                     free-value m/val        ;- value 一定不为空
                     free as byte-ptr! m/key
                 ]
-                free as byte-ptr! v/objptr
+                free v/objptr
             ]
             default     []
         ]
