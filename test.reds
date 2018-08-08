@@ -380,7 +380,7 @@ test-parse-object1: func [/local v v1 v2][
     json/free-value v2
 ]
 
-test-parse-object2: func [/local v v1][
+test-parse-object2: func [/local v v1 i][
     v: declare json-value!
     json/init-value v
 
@@ -391,7 +391,7 @@ test-parse-object2: func [/local v v1][
         ^"i^" : 1234 ,
         ^"s^" : ^"i am string^" ,
         ^"a^" : [ 1 , 2, ^"cc^" ] ,
-        ^"o^" : { ^"k1^": 11, ^"key22^" : ^"abc^" }
+        ^"o^" : { ^"1^": 1, ^"2^" : 2, ^"kkk^": ^"abc^" }
     } }
     expect-eq-int? JSON_OBJECT json/get-type v
     expect-eq-int? 7 json/get-object-size v
@@ -413,11 +413,30 @@ test-parse-object2: func [/local v v1][
 
     expect-eq-string? "a" (json/get-object-key v 5) (json/get-object-key-length v 5)
     expect-eq-int? JSON_ARRAY json/get-type (json/get-object-value v 5)
+    v1: declare json-value!
+    i: 0
+    while [i < 2][
+        json/init-value v1
+        v1: json/get-array-element (json/get-object-value v 5) i
+        expect-eq-int? JSON_NUMBER json/get-type v1
+        expect-eq-float? (1.0 + i) json/get-number v1
+        i: i + 1
+    ]
 
     expect-eq-string? "o" (json/get-object-key v 6) (json/get-object-key-length v 6)
     expect-eq-int? JSON_OBJECT json/get-type (json/get-object-value v 6)
+    i: 0
+    while [i < 2][
+        json/init-value v1
+        v1: json/get-object-value (json/get-object-value v 6) i
+        expect-eq-int? JSON_NUMBER json/get-type v1
+        expect-eq-float? (1.0 + i) json/get-number v1
+        expect-eq-int? 1 (json/get-object-key-length (json/get-object-value v 6) i)
+        i: i + 1
+    ]
 
     json/free-value v
+    json/free-value v1
 ]
 
 test-parse: does [
