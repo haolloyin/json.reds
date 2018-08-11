@@ -100,6 +100,7 @@ test-parse-false: func [/local v][
     v/type: JSON_NULL
     expect-eq-int? expect json/parse v str
     expect-eq-int? JSON_NULL json/get-type v
+    json/free-value v
 ]
 
 test-parse-expect-value: func [/local v][
