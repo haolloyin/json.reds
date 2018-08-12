@@ -748,6 +748,7 @@ json: context [
         v1      [json-value!]
         v2      [json-value!]
         return: [logic!]
+        /local  i e1 e2
     ][
         assert all [v1 <> null v2 <> null]
 
@@ -761,6 +762,17 @@ json: context [
                 ]
             ]
             JSON_NUMBER [return v1/num = v2/num]
+            JSON_ARRAY  [
+                if v1/len <> v2/len [return false]
+                i: 0
+                while [i < v1/len][
+                    e1: (as json-value! v1/arr) + i
+                    e2: (as json-value! v2/arr) + i
+                    unless value-is-equal? e1 e2 [return false]
+                    i: i + 1
+                ]
+                return true
+            ]
             default     [return false]
         ]
     ]
