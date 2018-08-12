@@ -48,7 +48,7 @@ expect-eq-string?: func [
     len     [integer!]
     /local equality s
 ][
-    print-line ["eq-string? expect: " expect ", actual: " actual "."]
+    ;printf ["eq-string? expect: %s, actual: %s.^/" expect actual]
     equality: all [
                 len = length? expect        ;- 长度必须相同
                 zero? compare-memory        ;- 再逐个字节来比较
@@ -227,17 +227,12 @@ test-access-number: func [/local v][
 
 test-parse-string: func [/local v][
     TEST_STRING("ab123" {"ab123"})
-    print-line "-------"
     TEST_STRING(""      {""})
-    print-line "-------"
     TEST_STRING("hello" {"hello"})
-    print-line "-------"
     TEST_STRING("hello red" {"hello red"})
-    print-line "-------"
     TEST_STRING("^""    {"\""})
     TEST_STRING("\"     {"\\"})
     TEST_STRING({\" \\ / \n \r \t}  {"\\\" \\\\ \/ \\n \\r \\t"})
-    print-line "-------"
 ]
 
 test-parse-array: func [/local v e i j v1 v2][
@@ -290,7 +285,7 @@ test-parse-array: func [/local v e i j v1 v2][
 
         j: 0
         while [j < (4 - i)] [
-            printf ["i:%d, j:%d^/" (4 - i) j]
+            ;printf ["i:%d, j:%d^/" (4 - i) j]
             v2: declare json-value!
             json/init-value v2 
 
@@ -357,7 +352,7 @@ test-parse-object1: func [/local v v1 v2][
     expect-eq-string? "a" (json/get-object-key v 0) (json/get-object-key-length v 0)
     v1: json/get-object-value v 0
         v2: json/get-object-value v 1
-        printf ["v1: %d, v2: %d^/" v1 v2]       ;- 查 member! 的 json-value! 引用有 bug 时用的
+        ;printf ["v1: %d, v2: %d^/" v1 v2]       ;- 查 member! 的 json-value! 引用有 bug 时用的
         assert v1 <> v2
     expect-eq-int? JSON_ARRAY json/get-type v1
     expect-eq-int? 2 json/get-array-size v1
@@ -440,6 +435,44 @@ test-parse-object2: func [/local v v1 i][
     json/free-value v1
 ]
 
+#define TEST_EQUAL(json1 json2 equality) [
+    v1: declare json-value!
+    v2: declare json-value!
+    json/init-value v1
+    json/init-value v2
+    expect-eq-int? PARSE_OK json/parse v1 json1
+    expect-eq-int? PARSE_OK json/parse v2 json2
+    json/free-value v1
+    json/free-value v2
+]
+
+test-equal: func [/local v1 v2][
+    TEST_EQUAL("true" "true" true)
+    TEST_EQUAL("true" "false" false)
+    TEST_EQUAL("false" "false" true)
+    TEST_EQUAL("null" "null" true)
+    TEST_EQUAL("null" "0" false)
+    TEST_EQUAL("123" "123" true)
+    TEST_EQUAL("123" "456" false)
+    TEST_EQUAL({"abc"} {"abc"} true)
+    TEST_EQUAL({"abc"} {"abcd"} false)
+    TEST_EQUAL("[]" "[ ]" true)
+    TEST_EQUAL("[]" "null" false)
+    TEST_EQUAL("[1, 2,3]" "[1,2, 3]" true)
+    TEST_EQUAL("[1, 2,3]" "[1,2, 3,4]" false)
+    TEST_EQUAL("[[]]" "[[]]" true)
+    TEST_EQUAL("{}" "{ }" true)
+    TEST_EQUAL("{}" "null" false)
+    TEST_EQUAL("{}" "[]" false)
+
+    TEST_EQUAL("{^"a^":1,^"b^":2}" "{^"a^":1,^"b^":2}" true)
+    TEST_EQUAL("{^"a^":1,^"b^":2}" "{^"b^":2,^"a^":1}" true)
+    TEST_EQUAL("{^"a^":1,^"b^":2}" "{^"a^":1,^"b^":3}" 0)
+    TEST_EQUAL("{^"a^":1,^"b^":2}" "{^"a^":1,^"b^":2,^"c^":3}" 0)
+    TEST_EQUAL("{^"a^":{^"b^":{^"c^":{}}}}" "{^"a^":{^"b^":{^"c^":{}}}}" true)
+    TEST_EQUAL("{^"a^":{^"b^":{^"c^":{}}}}" "{^"a^":{^"b^":{^"c^":[]}}}" false)
+]
+
 test-parse: does [
     ;test-parse-number-too-big      ;- no working
     test-parse-null
@@ -462,14 +495,15 @@ test-parse: does [
     test-parse-object
     test-parse-object1
     test-parse-object2
+    test-equal
 ]
 
 main: does [
     test-parse
     either zero? test-count [
-        printf ["^/    >>> Nothing to test^/^/"]
+        printf ["    >>> Nothing to test^gc/"]
     ][
-        printf ["^/    >>> %d/%d (%3.2f%%) passed^/^/" test-pass test-count (100.0 * test-pass / test-count)]
+        printf ["    >>> %d/%d (%3.2f%%) passed^gc/" test-pass test-count (100.0 * test-pass / test-count)]
     ]
 ]
 

@@ -409,7 +409,7 @@ json: context [
             v/objs: null                          ;- 空对象
             return PARSE_OK
         ]
-        print-line ["    --- start parsing object ---"]
+        ;printf ["    --- start parsing object ---^/"]
         ret: 0
         size: 0
             ;- 函数内的 /local 结构体默认是静态分配，调用多次之后都是同一个地址，不行，递归会导致覆盖
@@ -450,10 +450,10 @@ json: context [
             ;- 解析 value
             m/val: declare json-value!
             init-value m/val
-            printf ["...parse-object starts m: %d, m/key: %d, m/klen: %d, m/val: %d, v: %d, v/objs: %d, m/key: %s^/" m m/key m/klen m/val v v/objs m/key]
+            ;printf ["...parse-object starts m: %d, m/key: %d, m/klen: %d, m/val: %d, v: %d, v/objs: %d, m/key: %s^/" m m/key m/klen m/val v v/objs m/key]
             ret: parse-value m/val
             if ret <> PARSE_OK [break]
-            printf ["...parse-object finish m: %d, m/key: %d, m/klen: %d, m/val: %d, v: %d, v/objs: %d^/" m m/key m/klen m/val v v/objs ]
+            ;printf ["...parse-object finish m: %d, m/key: %d, m/klen: %d, m/val: %d, v: %d, v/objs: %d^/" m m/key m/klen m/val v v/objs ]
 
             ;- 从栈中弹出空间构造成 json-member!
             target: context-push size? json-member!
@@ -527,7 +527,7 @@ json: context [
         _ctx/top:   0
         v/type:     JSON_NULL
 
-        printf ["^/--------- origin json: %s^/" json]
+        ;printf ["^/--------- origin json: %s^/" json]
         parse-whitespace                ;- 先清掉前置的空白
         ret: parse-value v              ;- 开始解析
         if ret = PARSE_OK [
@@ -539,7 +539,7 @@ json: context [
             ]
         ]
  
-        printf ["^/--------- parse finish stack size: %d, top: %d^/" _ctx/size _ctx/top]
+        ;printf ["^/--------- parse finish stack size: %d, top: %d^/" _ctx/size _ctx/top]
         assert _ctx/top = 0             ;- 清理空间
         free _ctx/stack
 
@@ -744,11 +744,24 @@ json: context [
         return KEY_NOT_EXIST
     ]
 
+    find-object-value: func [
+        v       [json-value!]
+        key     [c-string!]
+        klen    [integer!]
+        return: [json-value!]
+        /local  i e
+    ][
+        i: find-object-index v key klen
+        if i = KEY_NOT_EXIST [return NULL]
+        e: (as json-member! v/objs) + i
+        e/val
+    ]
+
     value-is-equal?: func [
         v1      [json-value!]
         v2      [json-value!]
         return: [logic!]
-        /local  i e1 e2
+        /local  i j e1 e2 o1 o2
     ][
         assert all [v1 <> null v2 <> null]
 
@@ -770,6 +783,16 @@ json: context [
                     e2: (as json-value! v2/arr) + i
                     unless value-is-equal? e1 e2 [return false]
                     i: i + 1
+                ]
+                return true
+            ]
+            JSON_OBJECT [
+                if v1/len <> v2/len [return false]          ;- 对象内的 kv 个数不同
+                i: 0
+                while [i < v1/len][
+                    o1: (as json-member! v1/objs) + i
+                    j: find-object-index o1/val o1/key o1/klen
+                    if j = KEY_NOT_EXIST [return false]
                 ]
                 return true
             ]
