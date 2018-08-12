@@ -24,6 +24,8 @@ Red/System []
     PARSE_MISS_COMMA_OR_CURLY_BRACKET: 11
 ]
 
+#define KEY_NOT_EXIST -1
+
 ;- Note: Red/System 不支持 union 联合体，
 ;-       所以只能在结果体里冗余 number/string/array 几种情况
 json-value!: alias struct! [    ;- 用于承载解析后的结果
@@ -713,6 +715,54 @@ json: context [
 
         member: (as json-member! v/objs) + index
         member/val
+    ]
+
+    find-object-index: func [
+        v       [json-value!]
+        key     [c-string!]
+        klen    [integer!]
+        return: [integer!]
+        /local  i m
+    ][
+        assert all [
+            v <> null
+            v/type = JSON_OBJECT
+            key <> null]
+
+        i: 0
+        m: declare json-member!
+        while [i < v/len][
+            m: (as json-member! v/objs) + i 
+            if all [
+                m/klen = klen
+                0 = compare-memory (as byte-ptr! m/key) (as byte-ptr! key) klen
+            ][
+                return i
+            ]
+            i: i + 1
+        ]
+        return KEY_NOT_EXIST
+    ]
+
+    value-is-equal?: func [
+        v1      [json-value!]
+        v2      [json-value!]
+        return: [logic!]
+    ][
+        assert all [v1 <> null v2 <> null]
+
+        if v1/type <> v2/type [return false]
+
+        switch v1/type [
+            JSON_STRING [
+                return all [
+                    v1/len = v2/len
+                    0 = compare-memory (as byte-ptr! v1/str) (as byte-ptr! v2/str) v1/len
+                ]
+            ]
+            JSON_NUMBER [return v1/num = v2/num]
+            default     [return false]
+        ]
     ]
 ]
 
