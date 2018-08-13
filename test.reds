@@ -501,9 +501,9 @@ test-parse: does [
 main: does [
     test-parse
     either zero? test-count [
-        printf ["    >>> Nothing to test^gc/"]
+        printf ["    >>> Nothing to test^/^/"]
     ][
-        printf ["    >>> %d/%d (%3.2f%%) passed^gc/" test-pass test-count (100.0 * test-pass / test-count)]
+        printf ["    >>> %d/%d (%3.2f%%) passed^/^/" test-pass test-count (100.0 * test-pass / test-count)]
     ]
 ]
 

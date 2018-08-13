@@ -761,7 +761,7 @@ json: context [
         v1      [json-value!]
         v2      [json-value!]
         return: [logic!]
-        /local  i j e1 e2 o1 o2
+        /local  i j e1 e2 m1
     ][
         assert all [v1 <> null v2 <> null]
 
@@ -789,14 +789,14 @@ json: context [
             JSON_OBJECT [
                 if v1/len <> v2/len [return false]          ;- 对象内的 kv 个数不同
                 i: 0
-                while [i < v1/len][
-                    o1: (as json-member! v1/objs) + i
-                    j: find-object-index o1/val o1/key o1/klen
-                    if j = KEY_NOT_EXIST [return false]
+                while [i < v1/len][                         ;- 遍历 v1 中的元素，在 v2 找
+                    m1: (as json-member! v1/objs) + i
+                    e2: find-object-value m1/val m1/key m1/klen
+                    return value-is-equal? m1/val e2
                 ]
                 return true
             ]
-            default     [return false]
+            default [return false]
         ]
     ]
 ]
