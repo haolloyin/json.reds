@@ -799,5 +799,90 @@ json: context [
             default [return false]
         ]
     ]
+
+    copy-value: func [
+        dst     [json-value!]
+        src     [json-value!]
+        /local  size target i v m m0 tmp
+    ][
+        assert all [
+            src <> null
+            dst <> null
+            src <> dst]
+        switch src/type [
+            JSON_STRING [
+                set-string dst (as byte-ptr! dst/str) dst/len
+            ]
+            JSON_ARRAY [
+                size: src/len * (size? json-value!)
+                target: allocate size
+                i: 0
+                v: declare json-value!
+                while [i < src/len][
+                    v: (as json-value! target) + i
+                    copy-value v (src/arr + i)          ;- 递归复制
+                    i: i + 1
+                ]
+                
+                copy-memory target (as byte-ptr! src/arr) size
+                copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-value!)
+                dst/arr: as json-value! target          ;- 指向新的起始地址
+            ]
+            JSON_OBJECT [
+                size: src/len * (size? json-member!)
+                target: allocate size
+                i: 0
+                m: declare json-member!
+                m0: declare json-member!
+                while [i < src/len][
+                    m: (as json-member! target) + i
+                    m0: (as json-member! src/objs) + i
+
+                    tmp: allocate (m0/klen + 1)
+                    copy-memory tmp (as byte-ptr! m0/key) (m0/klen + 1)     ;- 复制 key
+                    m/key: as-c-string tmp
+                    m/klen: m0/klen
+
+                    copy-value m/val m0/val             ;- 递归复制 value
+                    i: i + 1
+                ]
+                
+                copy-memory target src/objs size
+                copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-member!)
+                dst/objs: target                        ;- 指向新的起始地址
+            ]
+            default [
+                free-value dst
+                copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-value!)
+            ]
+        ]
+    ]
+
+    move-value: func [
+        dst [json-value!]
+        src [json-value!]
+    ][
+        assert all [
+            dst <> null
+            src <> null
+            src <> dst]
+        free-value dst
+        copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-value!)
+        init-value src
+    ]
+
+    swap-value: func [
+        v1  [json-value!]
+        v2  [json-value!]
+        /local tmp
+    ][
+        assert all [v1 <> null v2 <> null]
+        if v1 <> v2 [
+            tmp: declare json-value!
+            copy-memory (as byte-ptr! tmp) (as byte-ptr! v1) (size? json-value!)
+            copy-memory (as byte-ptr! v1) (as byte-ptr! v2) (size? json-value!)
+            copy-memory (as byte-ptr! v2) (as byte-ptr! tmp) (size? json-value!)
+        ]
+    ]
 ]
 

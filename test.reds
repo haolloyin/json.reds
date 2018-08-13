@@ -495,11 +495,34 @@ test-parse: does [
     test-parse-object
     test-parse-object1
     test-parse-object2
-    test-equal
+]
+
+test-move: func [/local v1 v2 v3][
+    v1: declare json-value!
+    json/init-value v1
+    expect-eq-int? PARSE_OK json/parse v1  "{^"t^":true,^"f^":false,^"n^":null,^"d^":1.5,^"a^":[1,2,3]}"
+
+    v2: declare json-value!
+    json/init-value v2
+    json/copy-value v2 v1
+
+    v3: declare json-value!
+    json/init-value v3
+
+    json/move-value v3 v2
+    expect-eq-int? JSON_NULL json/get-type v2
+    ;expect-true? json/value-is-equal? v3 v1
+
+    json/free-value v1
+    json/free-value v2
+    ;json/free-value v3
 ]
 
 main: does [
     test-parse
+    test-equal
+    test-move
+
     either zero? test-count [
         printf ["    >>> Nothing to test^/^/"]
     ][
