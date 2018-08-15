@@ -435,42 +435,106 @@ test-parse-object2: func [/local v v1 i][
     json/free-value v1
 ]
 
-#define TEST_EQUAL(json1 json2 equality) [
+TEST_EQUAL: func [json1 [c-string!] json2 [c-string!] equality [logic!] /local v1 v2] [
     v1: declare json-value!
     v2: declare json-value!
     json/init-value v1
     json/init-value v2
     expect-eq-int? PARSE_OK json/parse v1 json1
     expect-eq-int? PARSE_OK json/parse v2 json2
+    either equality [
+        expect-true? json/value-is-equal? v1 v2
+    ][
+        expect-false? json/value-is-equal? v1 v2
+    ]
     json/free-value v1
     json/free-value v2
 ]
 
-test-equal: func [/local v1 v2][
-    TEST_EQUAL("true" "true" true)
-    TEST_EQUAL("true" "false" false)
-    TEST_EQUAL("false" "false" true)
-    TEST_EQUAL("null" "null" true)
-    TEST_EQUAL("null" "0" false)
-    TEST_EQUAL("123" "123" true)
-    TEST_EQUAL("123" "456" false)
-    TEST_EQUAL({"abc"} {"abc"} true)
-    TEST_EQUAL({"abc"} {"abcd"} false)
-    TEST_EQUAL("[]" "[ ]" true)
-    TEST_EQUAL("[]" "null" false)
-    TEST_EQUAL("[1, 2,3]" "[1,2, 3]" true)
-    TEST_EQUAL("[1, 2,3]" "[1,2, 3,4]" false)
-    TEST_EQUAL("[[]]" "[[]]" true)
-    TEST_EQUAL("{}" "{ }" true)
-    TEST_EQUAL("{}" "null" false)
-    TEST_EQUAL("{}" "[]" false)
+test-equal: does [
+    TEST_EQUAL "true" "true" true
+    TEST_EQUAL "true" "false" false
+    TEST_EQUAL "false" "false" true
+    TEST_EQUAL "null" "null" true
+    TEST_EQUAL "null" "0" false
+    TEST_EQUAL "123" "123" true
+    TEST_EQUAL "123" "456" false
+    TEST_EQUAL {"abc"} {"abc"} true
+    TEST_EQUAL {"abc"} {"abcd"} false
+    TEST_EQUAL "[]" "[ ]" true
+    TEST_EQUAL "[]" "null" false
+    TEST_EQUAL "[1, 2,3]" "[1,2, 3]" true
+    TEST_EQUAL "[1, 2,3]" "[1,2, 3,4]" false
+    TEST_EQUAL "[[]]" "[[]]" true
+    TEST_EQUAL "{}" "{ }" true
+    TEST_EQUAL "{}" "null" false
+    TEST_EQUAL "{}" "[]" false
+               
+    TEST_EQUAL "{^"a^":1,^"b^":2}" "{^"a^":1,^"b^":2}" true
+    TEST_EQUAL "{^"a^":1,^"b^":2}" "{^"b^":2,^"a^":1}" true
+    TEST_EQUAL "{^"a^":1,^"b^":2}" "{^"a^":1,^"b^":3}" false
+    TEST_EQUAL "{^"a^":1,^"b^":2}" "{^"a^":1,^"b^":2,^"c^":3}" false
+    TEST_EQUAL "{^"a^":{^"b^":{^"c^":{}}}}" "{^"a^":{^"b^":{^"c^":{}}}}" true
+    TEST_EQUAL "{^"a^":{^"b^":{^"c^":{}}}}" "{^"a^":{^"b^":{^"c^":[]}}}" false
+]
 
-    TEST_EQUAL("{^"a^":1,^"b^":2}" "{^"a^":1,^"b^":2}" true)
-    TEST_EQUAL("{^"a^":1,^"b^":2}" "{^"b^":2,^"a^":1}" true)
-    TEST_EQUAL("{^"a^":1,^"b^":2}" "{^"a^":1,^"b^":3}" 0)
-    TEST_EQUAL("{^"a^":1,^"b^":2}" "{^"a^":1,^"b^":2,^"c^":3}" 0)
-    TEST_EQUAL("{^"a^":{^"b^":{^"c^":{}}}}" "{^"a^":{^"b^":{^"c^":{}}}}" true)
-    TEST_EQUAL("{^"a^":{^"b^":{^"c^":{}}}}" "{^"a^":{^"b^":{^"c^":[]}}}" false)
+test-copy-array: func [/local v1 v2][
+    v1: declare json-value!
+    json/init-value v1
+    expect-eq-int? PARSE_OK json/parse v1 {["abc", 123, true, false, null, ["a", 123]]}
+    ;expect-eq-int? PARSE_OK json/parse v1 {[1, 123, true, false, null]}
+
+    v2: declare json-value!
+    json/init-value v2
+    json/copy-value v2 v1
+
+    printf ["v1/type: %d, v2/type: %d^/" v1/type v2/type]
+
+    expect-true? json/value-is-equal? v2 v1
+
+    json/free-value v1
+    json/free-value v2
+]
+
+test-copy-object: func [/local v1 v2][
+    v1: declare json-value!
+    json/init-value v1
+    ;expect-eq-int? PARSE_OK json/parse v1 "{^"t^":true,^"f^":false,^"n^":null,^"d^":1.5,^"a^":[1,2,3]}"
+    expect-eq-int? PARSE_OK json/parse v1 "{^"key^":true}"
+    expect-eq-int? JSON_OBJECT json/get-type v1
+
+    v2: declare json-value!
+    json/init-value v2
+    json/copy-value v2 v1
+
+    expect-true? json/value-is-equal? v2 v1
+
+    json/free-value v1
+    print-line 1
+    json/free-value v2
+    print-line 2
+]
+
+test-move: func [/local v1 v2 v3][
+    v1: declare json-value!
+    json/init-value v1
+    expect-eq-int? PARSE_OK json/parse v1  "{^"t^":true,^"f^":false,^"n^":null,^"d^":1.5,^"a^":[1,2,3]}"
+
+    v2: declare json-value!
+    json/init-value v2
+    json/copy-value v2 v1       ;- 复制
+
+    v3: declare json-value!
+    json/init-value v3 
+    json/move-value v3 v2       ;- move
+
+    printf ["    v1: %d, v2: %d, v3: %d^/" v1 v2 v3]
+    expect-eq-int? JSON_NULL json/get-type v2
+    expect-true? json/value-is-equal? v3 v1
+
+    json/free-value v1
+    json/free-value v2
+    json/free-value v3
 ]
 
 test-parse: does [
@@ -497,31 +561,12 @@ test-parse: does [
     test-parse-object2
 ]
 
-test-move: func [/local v1 v2 v3][
-    v1: declare json-value!
-    json/init-value v1
-    expect-eq-int? PARSE_OK json/parse v1  "{^"t^":true,^"f^":false,^"n^":null,^"d^":1.5,^"a^":[1,2,3]}"
-
-    v2: declare json-value!
-    json/init-value v2
-    json/copy-value v2 v1
-
-    v3: declare json-value!
-    json/init-value v3
-
-    json/move-value v3 v2
-    expect-eq-int? JSON_NULL json/get-type v2
-    ;expect-true? json/value-is-equal? v3 v1
-
-    json/free-value v1
-    json/free-value v2
-    ;json/free-value v3
-]
-
 main: does [
-    test-parse
-    test-equal
-    test-move
+    ;test-parse
+    ;test-equal
+    ;test-copy-array
+    test-copy-object        ;- Win7 下偶尔会访问内存报错，是 free m/key 时触发的
+    ;test-move               ;- 同上
 
     either zero? test-count [
         printf ["    >>> Nothing to test^/^/"]

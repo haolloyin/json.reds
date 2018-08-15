@@ -555,7 +555,7 @@ json: context [
 
     free-value: func [v [json-value!] /local i e m][
         assert v <> null
-        ;printf ["free v: %d, type: %d^/" v v/type]
+        printf ["--free v: %d, type: %d^/" v v/type]
         switch v/type [
             JSON_STRING [
                 free as byte-ptr! v/str
@@ -573,13 +573,14 @@ json: context [
                 i: 0
                 while [i < v/len][
                     m: (as json-member! v/objs) + i
-                    i: i + 1
-                    free-value m/val        ;- value 一定不为空
+                    printf ["will free m/key @%d^/" m/key]
                     free as byte-ptr! m/key
+                    free-value m/val        ;- value 一定不为空
+                    i: i + 1
                 ]
                 free v/objs
             ]
-            default     []
+            default []
         ]
         v/type: JSON_NULL 
     ]
@@ -791,27 +792,33 @@ json: context [
                 i: 0
                 while [i < v1/len][                         ;- 遍历 v1 中的元素，在 v2 找
                     m1: (as json-member! v1/objs) + i
-                    e2: find-object-value m1/val m1/key m1/klen
-                    return value-is-equal? m1/val e2
+                    ;printf ["value-is-equal? i: %d, key: %s, klen: %d^/" i m1/key  m1/klen]
+                    e2: find-object-value v2 m1/key m1/klen
+
+                    if null? e2 [return false]
+                    if not value-is-equal? m1/val e2 [return false]
+                    i: i + 1
                 ]
                 return true
             ]
-            default [return false]
+            default [return true]       ;- 剩下的是 TRUE / FALSE / NULL
         ]
     ]
 
     copy-value: func [
         dst     [json-value!]
         src     [json-value!]
-        /local  size target i v m m0 tmp
+        /local  size target i v v0 m m0 tmp
     ][
         assert all [
             src <> null
             dst <> null
-            src <> dst]
+            src <> dst
+        ]
+
         switch src/type [
             JSON_STRING [
-                set-string dst (as byte-ptr! dst/str) dst/len
+                set-string dst (as byte-ptr! src/str) src/len
             ]
             JSON_ARRAY [
                 size: src/len * (size? json-value!)
@@ -820,27 +827,27 @@ json: context [
                 v: declare json-value!
                 while [i < src/len][
                     v: (as json-value! target) + i
-                    copy-value v (src/arr + i)          ;- 递归复制
+                    v0: src/arr + i
+                    copy-value v v0          ;- 递归复制
                     i: i + 1
                 ]
                 
-                copy-memory target (as byte-ptr! src/arr) size
                 copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-value!)
                 dst/arr: as json-value! target          ;- 指向新的起始地址
             ]
             JSON_OBJECT [
                 size: src/len * (size? json-member!)
-                target: allocate size
+                target: allocate size                   ;- 申请足够的内存来保存成员
                 i: 0
                 m: declare json-member!
                 m0: declare json-member!
+
                 while [i < src/len][
                     m: (as json-member! target) + i
                     m0: (as json-member! src/objs) + i
 
-                    tmp: allocate (m0/klen + 1)
-                    copy-memory tmp (as byte-ptr! m0/key) (m0/klen + 1)     ;- 复制 key
-                    m/key: as-c-string tmp
+                    m/key: make-string (as byte-ptr! m0/key) m0/klen
+                    printf ["after copy object's key: %s, length: %d^/" m/key (length? m/key)]
                     m/klen: m0/klen
 
                     copy-value m/val m0/val             ;- 递归复制 value
@@ -853,6 +860,7 @@ json: context [
             ]
             default [
                 free-value dst
+                ;printf ["copy default^/"]
                 copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-value!)
             ]
         ]
@@ -865,7 +873,8 @@ json: context [
         assert all [
             dst <> null
             src <> null
-            src <> dst]
+            src <> dst
+        ]
         free-value dst
         copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-value!)
         init-value src
