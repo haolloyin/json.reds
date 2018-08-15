@@ -235,6 +235,7 @@ json: context [
         copy-memory target bytes len
         end: target + len
         end/value: null-byte        ;- 补上终结符
+        ;printf ["make-string '%s' address: %d^/" (as-c-string target) target]
         as-c-string target
     ]
 
@@ -437,6 +438,7 @@ json: context [
             ]
             ;- 分配内存装字符串，然后把新地址赋值给 key
             m/key: make-string key-ptr/bytes len-ptr/value
+            ;printf ["parse-object m/key: %d -> %s^/" m/key m/key]
             m/klen: len-ptr/value
 
             parse-whitespace
@@ -555,9 +557,10 @@ json: context [
 
     free-value: func [v [json-value!] /local i e m][
         assert v <> null
-        printf ["--free v: %d, type: %d^/" v v/type]
+        ;printf ["--free v: %d, type: %d^/" v v/type]
         switch v/type [
             JSON_STRING [
+                ;printf ["free str: %d^/" v/str]
                 free as byte-ptr! v/str
             ]
             JSON_ARRAY  [
@@ -573,7 +576,7 @@ json: context [
                 i: 0
                 while [i < v/len][
                     m: (as json-member! v/objs) + i
-                    printf ["will free m/key @%d^/" m/key]
+                    printf ["will free '%s' m/key @%d^/" m/key m/key]
                     free as byte-ptr! m/key
                     free-value m/val        ;- value 一定不为空
                     i: i + 1
@@ -808,7 +811,7 @@ json: context [
     copy-value: func [
         dst     [json-value!]
         src     [json-value!]
-        /local  size target i v v0 m m0 tmp
+        /local size target i v v0 m m0 tmp
     ][
         assert all [
             src <> null
@@ -823,6 +826,8 @@ json: context [
             JSON_ARRAY [
                 size: src/len * (size? json-value!)
                 target: allocate size
+                copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-value!)
+
                 i: 0
                 v: declare json-value!
                 while [i < src/len][
@@ -832,30 +837,28 @@ json: context [
                     i: i + 1
                 ]
                 
-                copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-value!)
                 dst/arr: as json-value! target          ;- 指向新的起始地址
             ]
             JSON_OBJECT [
                 size: src/len * (size? json-member!)
                 target: allocate size                   ;- 申请足够的内存来保存成员
-                i: 0
-                m: declare json-member!
-                m0: declare json-member!
 
+                ;- 先整个复制
+                copy-memory target src/objs size
+                copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-member!)
+
+                ;- 再单独处理 string、value 等需要分配内存的元素
+                i: 0
                 while [i < src/len][
                     m: (as json-member! target) + i
                     m0: (as json-member! src/objs) + i
 
                     m/key: make-string (as byte-ptr! m0/key) m0/klen
-                    printf ["after copy object's key: %s, length: %d^/" m/key (length? m/key)]
                     m/klen: m0/klen
 
                     copy-value m/val m0/val             ;- 递归复制 value
                     i: i + 1
                 ]
-                
-                copy-memory target src/objs size
-                copy-memory (as byte-ptr! dst) (as byte-ptr! src) (size? json-member!)
                 dst/objs: target                        ;- 指向新的起始地址
             ]
             default [
