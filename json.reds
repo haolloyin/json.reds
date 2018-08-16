@@ -557,10 +557,10 @@ json: context [
 
     free-value: func [v [json-value!] /local i e m][
         assert v <> null
-        ;printf ["--free v: %d, type: %d^/" v v/type]
+        printf ["--free v: %d, type: %d^/" v v/type]
         switch v/type [
             JSON_STRING [
-                ;printf ["free str: %d^/" v/str]
+                printf ["free str: '%s' --> %d^/" v/str v/str]
                 free as byte-ptr! v/str
             ]
             JSON_ARRAY  [

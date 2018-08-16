@@ -79,6 +79,7 @@ test-parse-null: func [/local v][
     v/type: JSON_NULL
     expect-eq-int? PARSE_OK json/parse v "null"
     expect-eq-int? JSON_NULL json/get-type v
+    json/free-value v
 ]
 
 test-parse-true: func [/local v][
@@ -86,6 +87,7 @@ test-parse-true: func [/local v][
     v/type: JSON_TRUE
     expect-eq-int? PARSE_OK json/parse v "true"
     expect-eq-int? JSON_TRUE json/get-type v
+    json/free-value v
 ]
 
 test-parse-false: func [/local v][
@@ -93,6 +95,7 @@ test-parse-false: func [/local v][
     v/type: JSON_FALSE
     expect-eq-int? PARSE_OK json/parse v "false"
     expect-eq-int? JSON_FALSE json/get-type v
+    json/free-value v
 ]
 
 #define TEST_ERROR(expect str) [
@@ -137,6 +140,7 @@ test-parse-root-not-singular: func [/local v][
     expect-eq-int? PARSE_OK json/parse v str
     expect-eq-int? JSON_NUMBER json/get-type v
     expect-eq-float? expect json/get-number v
+    json/free-value v
 ]
 
 test-parse-number: func [/local v][
@@ -304,6 +308,8 @@ test-parse-array: func [/local v e i j v1 v2][
     expect-eq-float? 1.0 e/num
 
     json/free-value v
+    json/free-value v1
+    json/free-value v2
     json/free-value e
 ]
 
@@ -560,9 +566,16 @@ test-parse: does [
 main: does [
     test-parse
     test-equal
+    print-line ["---- test-copy-array -----"]
     test-copy-array
-    ;test-copy-object
-    ;test-move
+    test-copy-object
+    test-move
+
+    comment { 
+        test-parse 和 copy-array 同时运行时在 macOS 下会偶尔遇到两次 free 相同
+        地址的问题，发现是 malloc 字符串前后分配了相同地址。
+        但在 Win7 下没有这种情况。
+    }
 
     either zero? test-count [
         printf ["    >>> Nothing to test^/^/"]
